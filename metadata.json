@@ -1,0 +1,7 @@
+{
+  "name": "AiAuntie - Smart Baby Tracker",
+  "description": "An AI-powered baby feeding and care tracker with voice interaction.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

@@ -1,0 +1,132 @@
+import React from 'react';
+import { FeedingRecord, RecordType, DiaperType } from '../types';
+
+interface RecordListProps {
+  records: FeedingRecord[];
+  onDelete: (id: string) => void;
+}
+
+const getIcon = (type: RecordType) => {
+  switch (type) {
+    case RecordType.BOTTLE_FORMULA: return '🍼';
+    case RecordType.BOTTLE_MILK: return '💧'; 
+    case RecordType.NURSING: return '🤱';
+    case RecordType.PUMPING: return '🧴';
+    case RecordType.DIAPER: return '🧷';
+    case RecordType.SLEEP: return '💤';
+    default: return '📝';
+  }
+};
+
+const getColor = (type: RecordType) => {
+    switch (type) {
+      case RecordType.BOTTLE_FORMULA: return 'bg-blue-100 text-blue-700 border-blue-200';
+      case RecordType.BOTTLE_MILK: return 'bg-sky-100 text-sky-600 border-sky-200';
+      case RecordType.NURSING: return 'bg-pink-100 text-pink-700 border-pink-200';
+      case RecordType.PUMPING: return 'bg-purple-100 text-purple-700 border-purple-200';
+      case RecordType.DIAPER: return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case RecordType.SLEEP: return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+  };
+
+const getLabel = (record: FeedingRecord) => {
+    switch(record.type) {
+        case RecordType.BOTTLE_FORMULA: return 'Formula';
+        case RecordType.BOTTLE_MILK: return 'Breast Milk';
+        case RecordType.NURSING: return 'Nursing';
+        case RecordType.PUMPING: return 'Pumping';
+        case RecordType.DIAPER: return record.diaperType || 'Diaper';
+        case RecordType.SLEEP: return 'Sleep';
+        default: return 'Other';
+    }
+};
+
+const RecordList: React.FC<RecordListProps> = ({ records, onDelete }) => {
+  const sorted = [...records].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  const grouped: Record<string, FeedingRecord[]> = {};
+  sorted.forEach(rec => {
+    const dateKey = new Date(rec.timestamp).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    if (!grouped[dateKey]) grouped[dateKey] = [];
+    grouped[dateKey].push(rec);
+  });
+
+  if (records.length === 0) {
+      return (
+          <div className="flex flex-col items-center justify-center py-20 opacity-50">
+              <span className="text-6xl mb-4">👶</span>
+              <p className="text-lg font-medium text-zinc-400">No records yet.</p>
+              <p className="text-sm text-zinc-400 mt-2">Tap + or say "Hi Auntie"</p>
+          </div>
+      )
+  }
+
+  return (
+    <div className="space-y-6 pb-32">
+      {Object.entries(grouped).map(([date, items]) => (
+        <div key={date}>
+          <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3 px-1 sticky top-16 bg-gray-50/95 py-2 z-10 backdrop-blur-sm">{date}</h3>
+          <div className="space-y-3">
+            {items.map((item) => (
+              <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm border border-zinc-100 flex items-start gap-4 relative group overflow-hidden">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shrink-0 ${getColor(item.type)}`}>
+                  {getIcon(item.type)}
+                </div>
+                
+                <div className="flex-1 pr-10"> 
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-bold text-zinc-800 text-base">
+                        {getLabel(item)}
+                      </h4>
+                      <div className="flex items-center text-xs text-zinc-500 font-medium mt-0.5">
+                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {item.endTime && (
+                            <>
+                                <span className="mx-1">→</span>
+                                {new Date(item.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Display Raw Voice Input */}
+                  {item.rawInput && item.rawInput !== 'Manual Entry' && (
+                      <div className="mt-1.5 text-sm text-zinc-500 italic border-l-2 border-zinc-100 pl-2">
+                          "{item.rawInput}"
+                      </div>
+                  )}
+
+                  <div className="mt-2 text-sm text-zinc-600 flex flex-wrap gap-2">
+                    {item.amountMl && <span className="inline-block bg-zinc-100 rounded-md px-2 py-1 font-semibold text-zinc-700">{item.amountMl}ml</span>}
+                    {item.side && <span className="inline-block bg-zinc-100 rounded-md px-2 py-1 capitalize">{item.side}</span>}
+                    {item.note && <span className="text-zinc-400 text-xs italic">Note: {item.note}</span>}
+                  </div>
+                </div>
+
+                {/* Delete Button - Made explicit and larger */}
+                <button 
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(item.id);
+                    }}
+                    className="absolute top-0 right-0 h-full w-14 bg-transparent text-zinc-200 hover:text-red-500 hover:bg-red-50 transition-all flex items-center justify-center z-20"
+                    aria-label="Delete"
+                >
+                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                     </svg>
+                </button>
+
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export default RecordList;
