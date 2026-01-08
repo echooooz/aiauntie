@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { RecordType, DiaperType } from "../types";
+import { RecordType, DiaperType } from "../src/types";
 
 const parsePrompt = `
 You are an intelligent assistant for a baby tracking app. 
