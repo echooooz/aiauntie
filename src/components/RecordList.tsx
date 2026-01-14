@@ -107,33 +107,35 @@ const RecordList: React.FC<RecordListProps> = ({ records, onDelete, onEdit }) =>
   
     return (
         <>
-        <DateSelector selectedDate={selectedDate} onDateChange={setSelectedDate} records={records} />
-        <div className="grid grid-cols-3 gap-2 mb-4">
-            <FilterButton 
-                label="Nursing" 
-                value={`${nursingTotal.toFixed(0)} min`} 
-                isActive={activeFilter === 'NURSING'} 
-                onClick={() => setActiveFilter(activeFilter === 'NURSING' ? null : 'NURSING')} 
-                color="pink"
-            />
-            <FilterButton 
-                label="Bottle" 
-                value={`${bottleTotal} ml`} 
-                isActive={activeFilter === 'BOTTLE'} 
-                onClick={() => setActiveFilter(activeFilter === 'BOTTLE' ? null : 'BOTTLE')} 
-                color="blue"
-            />
-            <FilterButton 
-                label="Pumping" 
-                value={`${pumpingTotal} ml`} 
-                isActive={activeFilter === 'PUMPING'} 
-                onClick={() => setActiveFilter(activeFilter === 'PUMPING' ? null : 'PUMPING')} 
-                color="purple"
-            />
+        <div className="sticky top-0 bg-gray-50 z-20 pb-2 -mx-6 px-6 pt-2">
+            <DateSelector selectedDate={selectedDate} onDateChange={setSelectedDate} records={records} />
+            <div className="grid grid-cols-3 gap-2 mb-2">
+                <FilterButton 
+                    label="Nursing" 
+                    value={`${nursingTotal.toFixed(0)} min`} 
+                    isActive={activeFilter === 'NURSING'} 
+                    onClick={() => setActiveFilter(activeFilter === 'NURSING' ? null : 'NURSING')} 
+                    color="pink"
+                />
+                <FilterButton 
+                    label="Bottle" 
+                    value={`${bottleTotal} ml`} 
+                    isActive={activeFilter === 'BOTTLE'} 
+                    onClick={() => setActiveFilter(activeFilter === 'BOTTLE' ? null : 'BOTTLE')} 
+                    color="blue"
+                />
+                <FilterButton 
+                    label="Pumping" 
+                    value={`${pumpingTotal} ml`} 
+                    isActive={activeFilter === 'PUMPING'} 
+                    onClick={() => setActiveFilter(activeFilter === 'PUMPING' ? null : 'PUMPING')} 
+                    color="purple"
+                />
+            </div>
         </div>
 
-      <div className="space-y-6 pb-32">
-        <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3 px-1 sticky top-0 bg-gray-50/95 py-2 z-10 backdrop-blur-sm">{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</h3>
+      <div className="space-y-6 pb-32 mt-4">
+        <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3 px-1 sticky top-[180px] bg-gray-50/95 py-2 z-10 backdrop-blur-sm hidden">{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</h3>
         {sorted.map((item) => (
             <div 
                 key={item.id} 
