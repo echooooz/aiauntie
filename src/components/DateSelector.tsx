@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useLayoutEffect } from 'react';
 
 interface DateSelectorProps {
   selectedDate: Date;
@@ -15,9 +15,15 @@ const DateSelector: React.FC<DateSelectorProps> = ({ selectedDate, onDateChange 
     return d;
   }).reverse();
 
-  useEffect(() => {
-    if (todayRef.current) {
-        todayRef.current.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+  useLayoutEffect(() => {
+    if (scrollContainerRef.current && todayRef.current) {
+        const container = scrollContainerRef.current;
+        const today = todayRef.current;
+        const containerWidth = container.offsetWidth;
+        const todayWidth = today.offsetWidth;
+        const todayOffset = today.offsetLeft;
+        
+        container.scrollLeft = todayOffset - (containerWidth / 2) + (todayWidth / 2);
     }
   }, []);
 
@@ -40,7 +46,7 @@ const DateSelector: React.FC<DateSelectorProps> = ({ selectedDate, onDateChange 
             onClick={() => onDateChange(date)}
             className={`snap-center flex-shrink-0 w-16 text-center rounded-xl p-2 transition-all ${isSelected ? 'bg-rose-500 text-white' : 'bg-white'}`}
           >
-            <p className={`text-xs font-medium ${isSelected ? 'text-rose-100' : 'text-zinc-400'}`}>{date.toLocaleDateString('en-US', { weekday: 'short' })}</p>
+            <p className={`text-xs font-medium ${isSelected ? 'text-rose-100' : 'text-zinc-400'}`}>{date.toLocaleString('en-US', { weekday: 'short' })}</p>
             <p className={`font-bold text-lg ${isSelected ? 'text-white' : 'text-zinc-800'}`}>{date.getDate()}</p>
           </button>
         );

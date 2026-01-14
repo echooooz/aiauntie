@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { FeedingRecord, RecordType } from '../types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
 
 interface StatsViewProps {
   records: FeedingRecord[];
@@ -18,64 +18,63 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
         return date.toLocaleDateString('en-CA', { timeZone: userTimeZone }); // YYYY-MM-DD
     }
 
-  const getLast7Days = () => {
+  const allDays = useMemo(() => {
+    if (records.length === 0) return [];
+    
+    const sortedRecords = [...records].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    const firstDate = new Date(sortedRecords[0].timestamp);
+    const lastDate = new Date(sortedRecords[sortedRecords.length - 1].timestamp);
+
     const days = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      days.push(d);
+    let currentDate = firstDate;
+    
+    while(currentDate <= lastDate) {
+        days.push(new Date(currentDate));
+        currentDate.setDate(currentDate.getDate() + 1);
     }
     return days;
-  };
+  }, [records]);
 
-  const last7Days = getLast7Days();
-
-  const dailyData = last7Days.map(day => {
-    const dayKey = getDayKey(day);
-    const dayRecords = records.filter(r => getDayKey(new Date(r.timestamp)) === dayKey);
-
-    const formula = dayRecords
-        .filter(r => r.type === RecordType.BOTTLE_FORMULA)
-        .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+  const dailyData = useMemo(() => {
+    return allDays.map(day => {
+        const dayKey = getDayKey(day);
+        const dayRecords = records.filter(r => getDayKey(new Date(r.timestamp)) === dayKey);
     
-    const breastMilk = dayRecords
-        .filter(r => r.type === RecordType.BOTTLE_MILK)
-        .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+        const formula = dayRecords
+            .filter(r => r.type === RecordType.BOTTLE_FORMULA)
+            .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+        
+        const breastMilk = dayRecords
+            .filter(r => r.type === RecordType.BOTTLE_MILK)
+            .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+        
+        const feedingCount = dayRecords
+            .filter(r => r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK || r.type === RecordType.NURSING).length;
     
-    const feedingCount = dayRecords
-        .filter(r => r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK || r.type === RecordType.NURSING).length;
+        const pumpingVol = dayRecords
+            .filter(r => r.type === RecordType.PUMPING)
+            .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+    
+        const pumpingCount = dayRecords.filter(r => r.type === RecordType.PUMPING).length;
+    
+        return {
+            day: day.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }),
+            Formula: formula,
+            'Breast Milk': breastMilk,
+            total: formula + breastMilk,
+            'Feeding Count': feedingCount,
+            'Pumping Volume': pumpingVol,
+            'Pumping Count': pumpingCount
+        };
+      });
+  }, [allDays, records]);
 
-    const pumpingVol = dayRecords
-        .filter(r => r.type === RecordType.PUMPING)
-        .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+  const yAxisMax = useMemo(() => {
+      if (feedingMetric === 'count') return undefined;
+      const maxVol = Math.max(...dailyData.map(d => d.total));
+      return Math.ceil(maxVol / 100) * 100;
+  }, [dailyData, feedingMetric]);
 
-    const pumpingCount = dayRecords.filter(r => r.type === RecordType.PUMPING).length;
-
-    return {
-        day: day.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }),
-        Formula: formula,
-        'Breast Milk': breastMilk,
-        total: formula + breastMilk,
-        'Feeding Count': feedingCount,
-        'Pumping Volume': pumpingVol,
-        'Pumping Count': pumpingCount
-    };
-  });
-
-  const pieData = Object.values(RecordType).map(type => {
-      const count = records.filter(r => r.type === type).length;
-      return { name: type, value: count };
-  }).filter(d => d.value > 0);
-
-  const COLORS: Record<string, string> = {
-    [RecordType.BOTTLE_FORMULA]: '#60A5FA', // Blue
-    [RecordType.BOTTLE_MILK]: '#38BDF8', // Sky
-    [RecordType.NURSING]: '#F472B6', // Pink
-    [RecordType.PUMPING]: '#A78BFA', // Purple
-    [RecordType.DIAPER]: '#FBBF24', // Yellow
-    [RecordType.SLEEP]: '#818CF8', // Indigo
-    [RecordType.OTHER]: '#9CA3AF'
-  };
 
   if (records.length === 0) {
       return <div className="p-8 text-center text-zinc-400">No data to visualize yet.</div>;
@@ -111,7 +110,7 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
 
       {/* Feeding Volume Chart */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-100">
-        <h3 className="text-lg font-bold text-zinc-800 mb-2">Feeding (Last 7 Days)</h3>
+        <h3 className="text-lg font-bold text-zinc-800 mb-2">Feeding</h3>
         <MetricTabs 
             metrics={{'total': 'Total', 'formula': 'Formula', 'breast_milk': 'Breast Milk', 'count': 'Count'}}
             activeMetric={feedingMetric}
@@ -121,7 +120,7 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={dailyData}>
               <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} />
-              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} />
+              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} domain={[0, yAxisMax]}/>
               <Tooltip 
                 cursor={{fill: '#F3F4F6'}}
                 contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} 
@@ -167,38 +166,6 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
           </ResponsiveContainer>
         </div>
       </div>
-
-      {/* Activity Breakdown */}
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-100">
-        <h3 className="text-lg font-bold text-zinc-800 mb-4">Activity Breakdown</h3>
-        <div className="h-64 flex items-center justify-center">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={pieData}
-                innerRadius={60}
-                outerRadius={80}
-                paddingAngle={5}
-                dataKey="value"
-              >
-                {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[entry.name] || '#ccc'} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="flex flex-wrap gap-2 justify-center mt-4">
-             {pieData.map(d => (
-                 <div key={d.name} className="flex items-center text-xs text-zinc-500">
-                     <span className="w-3 h-3 rounded-full mr-1" style={{backgroundColor: COLORS[d.name] || '#ccc'}}></span>
-                     {d.name} ({d.value})
-                 </div>
-             ))}
-        </div>
-      </div>
-
     </div>
   );
 };
