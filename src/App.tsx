@@ -1,10 +1,33 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { FeedingRecord, ViewState } from './types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { FeedingRecord, ViewState, RecordType } from './types';
 import { generateDemoData } from './demoData';
 import VoiceAssistant from './components/VoiceAssistant';
 import RecordList from './components/RecordList';
 import StatsView from './components/StatsView';
 import ManualEntry from './components/ManualEntry';
+import DateSelector from './components/DateSelector';
+
+// Define FilterType here as it's used in App's state
+export type FilterType = 'NURSING' | 'BOTTLE' | 'PUMPING' | null;
+
+const FilterButton = ({ label, value, isActive, onClick, color }: any) => {
+    const colorClasses = {
+        pink: 'border-pink-200 bg-pink-50 text-pink-700',
+        blue: 'border-blue-200 bg-blue-50 text-blue-700',
+        purple: 'border-purple-200 bg-purple-50 text-purple-700'
+    };
+    const inactiveClasses = 'border-zinc-200 bg-white text-zinc-500';
+  
+    return (
+        <button 
+            onClick={onClick}
+            className={`p-3 rounded-xl border-2 text-left transition-all ${isActive ? colorClasses[color] : inactiveClasses}`}
+        >
+            <p className="text-xs font-bold uppercase">{label}</p>
+            <p className="text-lg font-black">{value}</p>
+        </button>
+    )
+}
 
 const App = () => {
   const [view, setView] = useState<ViewState>('HOME');
@@ -12,47 +35,40 @@ const App = () => {
   const [isManualOpen, setIsManualOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<FeedingRecord | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mainContentRef = useRef<HTMLElement>(null);
   
-  // Lazy initialization with robust check
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [activeFilter, setActiveFilter] = useState<FilterType>(null);
+  
   const [records, setRecords] = useState<FeedingRecord[]>(() => {
     try {
       const saved = localStorage.getItem('feeding_records');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-      // Load demo data for testing if no data exists
-      return generateDemoData();
+      return saved ? JSON.parse(saved) : generateDemoData();
     } catch (e) {
       console.error("Failed to load records", e);
       return [];
     }
   });
 
-  // Save to local storage whenever records change
   useEffect(() => {
-    try {
-        localStorage.setItem('feeding_records', JSON.stringify(records));
-    } catch (e) {
-        console.error("Failed to save records", e);
-    }
+    localStorage.setItem('feeding_records', JSON.stringify(records));
   }, [records]);
 
-  // Handle URL Params for Shortcuts
   useEffect(() => {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('action') === 'voice') {
-          setIsVoiceOpen(true);
-          window.history.replaceState({}, document.title, "/");
-      }
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') === 'voice') {
+        setIsVoiceOpen(true);
+        window.history.replaceState({}, document.title, "/");
+    }
   }, []);
 
   const addRecord = (record: FeedingRecord) => {
-    setRecords(prev => [record, ...prev]);
+    setRecords(prev => [record, ...prev].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
   };
 
   const updateRecord = (updatedRecord: FeedingRecord) => {
     setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
-    setEditingRecord(null); 
+    setEditingRecord(null);
   };
 
   const deleteRecord = (id: string) => {
@@ -66,194 +82,115 @@ const App = () => {
     setIsManualOpen(true);
   };
 
-  const handleExport = () => {
-    const dataStr = JSON.stringify(records, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `aiauntie_export_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  const handleDateChange = (date: Date) => {
+      setSelectedDate(date);
+      const dateKey = date.toDateString();
+      const mainContent = mainContentRef.current;
+      const el = mainContent?.querySelector(`[data-datekey='${dateKey}']`);
 
-  const triggerImport = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const content = e.target?.result as string;
-        const importedData = JSON.parse(content);
-        
-        if (Array.isArray(importedData)) {
-            if (window.confirm(`Found ${importedData.length} records. This will merge with your current data. Continue?`)) {
-                // Merge logic: avoid duplicates by ID
-                setRecords(prev => {
-                    const currentIds = new Set(prev.map(r => r.id));
-                    const newRecords = importedData.filter((r: FeedingRecord) => !currentIds.has(r.id));
-                    return [...newRecords, ...prev].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-                });
-                alert("Import successful!");
-            }
-        } else {
-            alert("Invalid file format.");
-        }
-      } catch (err) {
-        console.error(err);
-        alert("Failed to parse file. Please ensure it is a valid JSON export.");
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    };
-    reader.readAsText(file);
-    // Reset input
-    event.target.value = '';
   };
+
+  const filteredRecords = useMemo(() => {
+    if (!activeFilter) return records;
+    switch (activeFilter) {
+        case 'NURSING':
+            return records.filter(r => r.type === RecordType.NURSING);
+        case 'BOTTLE':
+            return records.filter(r => r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK);
+        case 'PUMPING':
+            return records.filter(r => r.type === RecordType.PUMPING);
+        default:
+            return records;
+    }
+  }, [records, activeFilter]);
+
+  const dailyTotals = useMemo(() => {
+    const isSameDay = (d1: Date, d2: Date) => d1.toDateString() === d2.toDateString();
+    const dailyRecords = records.filter(r => isSameDay(new Date(r.timestamp), selectedDate));
+    
+    const nursingTotal = dailyRecords.filter(r => r.type === RecordType.NURSING)
+        .reduce((acc, curr) => acc + (curr.endTime ? (new Date(curr.endTime).getTime() - new Date(curr.timestamp).getTime()) : 0), 0) / (1000 * 60);
+    const bottleTotal = dailyRecords.filter(r => r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK)
+        .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+    const pumpingTotal = dailyRecords.filter(r => r.type === RecordType.PUMPING)
+        .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+
+    return { nursingTotal, bottleTotal, pumpingTotal };
+  }, [records, selectedDate]);
+
 
   return (
-    <div className="min-h-screen max-w-md mx-auto bg-gray-50 relative shadow-2xl pb-32">
-      
-      {/* Hidden File Input for Import */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleImport} 
-        accept=".json" 
-        className="hidden" 
-      />
+    <div className="h-screen max-w-md mx-auto bg-gray-50 shadow-2xl flex flex-col">
+      <input type="file" ref={fileInputRef} onChange={() => {}} accept=".json" className="hidden" />
 
-      {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-gray-50/80 backdrop-blur-md px-6 py-4 flex justify-between items-center safe-top border-b border-gray-200/50">
-        <div>
-          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-violet-600">
-            AiAuntie
-          </h1>
-          <p className="text-xs text-zinc-400 font-medium">Smart Baby Tracker</p>
+      <header className="sticky top-0 z-20 bg-gray-50/90 backdrop-blur-md safe-top border-b border-gray-200/50">
+        <div className="px-6 pt-4 flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-violet-600">
+                AiAuntie
+              </h1>
+              <p className="text-xs text-zinc-400 font-medium">Smart Baby Tracker</p>
+            </div>
+            <button 
+                onClick={() => { setEditingRecord(null); setIsManualOpen(true); }}
+                className="bg-zinc-900 text-white w-10 h-10 rounded-full shadow-lg flex items-center justify-center"
+                aria-label="Add Record"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+            </button>
         </div>
         
-        {/* Top Right: Manual Entry Plus Button */}
-        <button 
-            onClick={() => {
-                setEditingRecord(null);
-                setIsManualOpen(true);
-            }}
-            className="bg-zinc-900 text-white w-10 h-10 rounded-full shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
-            aria-label="Add Record"
-        >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-        </button>
+        {view === 'HOME' && (
+            <div className="px-6 pt-4 pb-2">
+                 <DateSelector selectedDate={selectedDate} onDateChange={handleDateChange} records={records} />
+                 <div className="grid grid-cols-3 gap-2 mt-2">
+                     <FilterButton 
+                         label="Nursing" 
+                         value={`${dailyTotals.nursingTotal.toFixed(0)} min`} 
+                         isActive={activeFilter === 'NURSING'} 
+                         onClick={() => setActiveFilter(activeFilter === 'NURSING' ? null : 'NURSING')} 
+                         color="pink"
+                     />
+                     <FilterButton 
+                         label="Bottle" 
+                         value={`${dailyTotals.bottleTotal} ml`} 
+                         isActive={activeFilter === 'BOTTLE'} 
+                         onClick={() => setActiveFilter(activeFilter === 'BOTTLE' ? null : 'BOTTLE')} 
+                         color="blue"
+                     />
+                     <FilterButton 
+                         label="Pumping" 
+                         value={`${dailyTotals.pumpingTotal} ml`} 
+                         isActive={activeFilter === 'PUMPING'} 
+                         onClick={() => setActiveFilter(activeFilter === 'PUMPING' ? null : 'PUMPING')} 
+                         color="purple"
+                     />
+                 </div>
+            </div>
+        )}
       </header>
 
-      {/* Main Content Area */}
-      <main className="px-6 py-6 min-h-[calc(100vh-160px)]">
+      <main ref={mainContentRef} className="flex-grow overflow-y-auto px-6">
         {view === 'HOME' && (
-          <>
-            <div className="flex justify-between items-end mb-6">
-              <h2 className="text-3xl font-bold text-zinc-800 tracking-tight">Today</h2>
-              <span className="text-zinc-400 text-sm font-medium">{new Date().toLocaleDateString('en-US', {weekday: 'long', month: 'short', day: 'numeric'})}</span>
-            </div>
-            <RecordList records={records} onDelete={deleteRecord} onEdit={handleEdit} />
-          </>
+            <RecordList 
+                records={filteredRecords} 
+                onDelete={deleteRecord} 
+                onEdit={handleEdit} 
+            />
         )}
-
-        {view === 'STATS' && (
-           <>
-            <h2 className="text-3xl font-bold text-zinc-800 tracking-tight mb-6">Insights</h2>
-            <StatsView records={records} />
-           </>
-        )}
-
-        {view === 'SETTINGS' && (
-            <div className="space-y-6">
-                 <h2 className="text-3xl font-bold text-zinc-800 tracking-tight mb-6">Settings</h2>
-                 
-                 {/* iOS Shortcut Guide */}
-                 <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 shadow-md text-white">
-                     <h3 className="font-bold text-xl mb-2">⚡️ Set up "Hi Auntie"</h3>
-                     <p className="text-indigo-100 text-sm mb-4">
-                        Enable voice recording from iOS Home Screen or Siri.
-                     </p>
-                     
-                     <div className="bg-white/10 rounded-xl p-4 space-y-3 backdrop-blur-sm">
-                        <div className="flex gap-3 items-start">
-                            <span className="bg-white/20 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">1</span>
-                            <p className="text-sm">Open <strong>Shortcuts</strong> app on iPhone.</p>
-                        </div>
-                        <div className="flex gap-3 items-start">
-                            <span className="bg-white/20 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">2</span>
-                            <p className="text-sm">Tap <strong>+</strong> to create a new shortcut.</p>
-                        </div>
-                        <div className="flex gap-3 items-start">
-                            <span className="bg-white/20 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">3</span>
-                            <p className="text-sm">Add Action: <strong>Open URL</strong>.</p>
-                        </div>
-                        <div className="flex gap-3 items-start">
-                            <span className="bg-white/20 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">4</span>
-                            <div className="w-full">
-                                <p className="text-sm mb-1">Paste this URL:</p>
-                                <div className="bg-black/30 p-2 rounded text-xs font-mono break-all select-all">
-                                    {window.location.origin}/?action=voice
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex gap-3 items-start">
-                            <span className="bg-white/20 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">5</span>
-                            <p className="text-sm">Name it <strong>Hi Auntie</strong>.</p>
-                        </div>
-                     </div>
-                     <p className="mt-4 text-xs text-indigo-200 text-center font-medium">Now say "Hey Siri, Hi Auntie"!</p>
-                 </div>
-
-                 <div className="bg-white rounded-2xl p-6 shadow-sm">
-                     <h3 className="font-bold text-lg mb-4">Data Management</h3>
-                     <div className="grid grid-cols-2 gap-4">
-                        <button 
-                            onClick={handleExport}
-                            className="w-full py-4 px-4 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl font-bold active:scale-95 transition-transform flex flex-col items-center justify-center gap-2"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-zinc-600">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                            </svg>
-                            Export
-                        </button>
-                        <button
-                            onClick={triggerImport}
-                            className="w-full py-4 px-4 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl font-bold active:scale-95 transition-transform flex flex-col items-center justify-center gap-2"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-zinc-600">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                            </svg>
-                            Import
-                        </button>
-                     </div>
-                     <button
-                        onClick={() => {
-                            if(window.confirm("Load demo data? This will add records.")) {
-                                setRecords(prev => [...generateDemoData(), ...prev]);
-                            }
-                        }}
-                        className="w-full mt-4 py-3 text-sm text-zinc-500 font-medium hover:text-zinc-800 transition-colors"
-                     >
-                        Load Demo Data
-                     </button>
-                     <p className="text-xs text-center text-zinc-400 mt-3">Supports .json format</p>
-                 </div>
-            </div>
-        )}
+        {view === 'STATS' && <StatsView records={records} />}
+        {view === 'SETTINGS' && <div className="py-6"><p>Settings will be here.</p></div>}
       </main>
 
-      {/* Floating Action Button (Voice) - Lifted HIGHER (bottom-24) to float above Nav */}
-      <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-20">
+      <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-30">
          <button 
             onClick={() => setIsVoiceOpen(true)}
-            className="w-16 h-16 bg-gradient-to-tr from-rose-500 to-orange-500 rounded-full shadow-xl shadow-rose-500/40 flex items-center justify-center text-white active:scale-90 transition-transform ring-4 ring-gray-50"
+            className="w-16 h-16 bg-gradient-to-tr from-rose-500 to-orange-500 rounded-full shadow-xl flex items-center justify-center text-white ring-4 ring-gray-50"
          >
              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-8 h-8">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
@@ -261,10 +198,8 @@ const App = () => {
          </button>
       </div>
 
-      {/* Bottom Navigation - 3 Columns Equal Width */}
-      <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-zinc-200 safe-bottom pb-2 pt-2 z-10">
+      <nav className="safe-bottom pb-2 pt-2 z-20 border-t border-zinc-200 bg-white">
         <div className="grid grid-cols-3 h-14">
-            {/* 1. Timeline */}
             <button 
                 onClick={() => setView('HOME')}
                 className={`flex flex-col items-center justify-center transition-colors ${view === 'HOME' ? 'text-rose-500' : 'text-zinc-400'}`}
@@ -274,8 +209,6 @@ const App = () => {
             </svg>
             <span className="text-[10px] font-bold">Timeline</span>
             </button>
-
-            {/* 2. Stats */}
             <button 
                 onClick={() => setView('STATS')}
                 className={`flex flex-col items-center justify-center transition-colors ${view === 'STATS' ? 'text-rose-500' : 'text-zinc-400'}`}
@@ -285,8 +218,6 @@ const App = () => {
             </svg>
             <span className="text-[10px] font-bold">Stats</span>
             </button>
-            
-            {/* 3. Settings */}
             <button 
                 onClick={() => setView('SETTINGS')}
                 className={`flex flex-col items-center justify-center transition-colors ${view === 'SETTINGS' ? 'text-rose-500' : 'text-zinc-400'}`}
@@ -299,18 +230,10 @@ const App = () => {
         </div>
       </nav>
 
-      {/* Modals */}
-      <VoiceAssistant 
-        isOpen={isVoiceOpen} 
-        onClose={() => setIsVoiceOpen(false)} 
-        onRecordAdded={addRecord} 
-      />
+      <VoiceAssistant isOpen={isVoiceOpen} onClose={() => setIsVoiceOpen(false)} onRecordAdded={addRecord} />
       <ManualEntry
         isOpen={isManualOpen}
-        onClose={() => {
-            setIsManualOpen(false);
-            setEditingRecord(null);
-        }}
+        onClose={() => { setIsManualOpen(false); setEditingRecord(null); }}
         onSave={editingRecord ? updateRecord : addRecord}
         recordToEdit={editingRecord}
       />
