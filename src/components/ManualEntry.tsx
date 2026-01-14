@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FeedingRecord, RecordType, DiaperType } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -6,24 +6,56 @@ interface ManualEntryProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (record: FeedingRecord) => void;
+  recordToEdit?: FeedingRecord | null;
 }
 
-const ManualEntry: React.FC<ManualEntryProps> = ({ isOpen, onClose, onSave }) => {
+const getLocalISOString = (date: Date) => {
+    const offset = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().slice(0, 16);
+}
+
+const ManualEntry: React.FC<ManualEntryProps> = ({ isOpen, onClose, onSave, recordToEdit }) => {
   const [step, setStep] = useState<'TYPE_SELECT' | 'DETAILS'>('TYPE_SELECT');
   const [selectedType, setSelectedType] = useState<RecordType | null>(null);
   
   // Form State
-  const [startTime, setStartTime] = useState(new Date().toISOString().slice(0, 16)); // YYYY-MM-DDTHH:mm
+  const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState(''); 
   const [amount, setAmount] = useState<string>('');
   const [side, setSide] = useState<'left' | 'right' | 'both'>('both');
   const [diaper, setDiaper] = useState<DiaperType>(DiaperType.WET);
 
+  useEffect(() => {
+    if (isOpen) {
+      if (recordToEdit) {
+        // Editing existing record
+        setStep('DETAILS');
+        setSelectedType(recordToEdit.type);
+        setStartTime(getLocalISOString(new Date(recordToEdit.timestamp)));
+        setEndTime(recordToEdit.endTime ? getLocalISOString(new Date(recordToEdit.endTime)) : '');
+        setAmount(recordToEdit.amountMl ? String(recordToEdit.amountMl) : '');
+        setSide(recordToEdit.side || 'both');
+        setDiaper(recordToEdit.diaperType || DiaperType.WET);
+      } else {
+        // Creating new record
+        setStep('TYPE_SELECT');
+        setSelectedType(null);
+        setStartTime(getLocalISOString(new Date()));
+        setEndTime('');
+        setAmount('');
+        setSide('both');
+        setDiaper(DiaperType.WET);
+      }
+    }
+  }, [isOpen, recordToEdit]);
+
+
   if (!isOpen) return null;
 
   const handleTypeSelect = (type: RecordType) => {
     setSelectedType(type);
-    setStartTime(new Date().toISOString().slice(0, 16));
+    setStartTime(getLocalISOString(new Date()));
     setEndTime('');
     setAmount('');
     setStep('DETAILS');
@@ -33,10 +65,10 @@ const ManualEntry: React.FC<ManualEntryProps> = ({ isOpen, onClose, onSave }) =>
     if (!selectedType) return;
 
     const record: FeedingRecord = {
-      id: uuidv4(),
+      id: recordToEdit?.id || uuidv4(),
       type: selectedType,
       timestamp: new Date(startTime).toISOString(),
-      rawInput: 'Manual Entry'
+      rawInput: recordToEdit?.rawInput || 'Manual Entry'
     };
 
     if (endTime) record.endTime = new Date(endTime).toISOString();
@@ -61,7 +93,7 @@ const ManualEntry: React.FC<ManualEntryProps> = ({ isOpen, onClose, onSave }) =>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-100 sticky top-0 bg-white z-10">
           <button onClick={handleClose} className="text-zinc-500 font-medium">Cancel</button>
-          <h3 className="font-bold text-lg">{step === 'TYPE_SELECT' ? 'New Entry' : 'Details'}</h3>
+          <h3 className="font-bold text-lg">{step === 'TYPE_SELECT' ? 'New Entry' : (recordToEdit ? 'Edit Entry' : 'Details')}</h3>
           {step === 'DETAILS' ? (
               <button onClick={handleSave} className="text-rose-600 font-bold">Save</button>
           ) : (

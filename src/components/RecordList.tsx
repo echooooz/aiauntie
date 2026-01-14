@@ -1,10 +1,13 @@
-import React from 'react';
-import { FeedingRecord, RecordType, DiaperType } from '../types';
+import React, { useState, useMemo } from 'react';
+import { FeedingRecord, RecordType } from '../types';
 
 interface RecordListProps {
   records: FeedingRecord[];
   onDelete: (id: string) => void;
+  onEdit: (record: FeedingRecord) => void;
 }
+
+type FilterType = 'NURSING' | 'BOTTLE' | 'PUMPING' | null;
 
 const getIcon = (type: RecordType) => {
   switch (type) {
@@ -42,91 +45,181 @@ const getLabel = (record: FeedingRecord) => {
     }
 };
 
-const RecordList: React.FC<RecordListProps> = ({ records, onDelete }) => {
-  const sorted = [...records].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+const RecordList: React.FC<RecordListProps> = ({ records, onDelete, onEdit }) => {
+    const [activeFilter, setActiveFilter] = useState<FilterType>(null);
+    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  const grouped: Record<string, FeedingRecord[]> = {};
-  sorted.forEach(rec => {
-    const dateKey = new Date(rec.timestamp).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-    if (!grouped[dateKey]) grouped[dateKey] = [];
-    grouped[dateKey].push(rec);
-  });
+  
+    const filteredRecords = useMemo(() => {
+        if (!activeFilter) {
+          return records;
+        }
+        switch (activeFilter) {
+          case 'NURSING':
+            return records.filter(r => r.type === RecordType.NURSING);
+          case 'BOTTLE':
+            return records.filter(r => r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK);
+          case 'PUMPING':
+            return records.filter(r => r.type === RecordType.PUMPING);
+          default:
+            return records;
+        }
+    }, [records, activeFilter]);
 
-  if (records.length === 0) {
-      return (
-          <div className="flex flex-col items-center justify-center py-20 opacity-50">
-              <span className="text-6xl mb-4">👶</span>
-              <p className="text-lg font-medium text-zinc-400">No records yet.</p>
-              <p className="text-sm text-zinc-400 mt-2">Tap + or say "Hi Auntie"</p>
-          </div>
-      )
-  }
 
-  return (
-    <div className="space-y-6 pb-32">
-      {Object.entries(grouped).map(([date, items]) => (
-        <div key={date}>
-          <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3 px-1 sticky top-16 bg-gray-50/95 py-2 z-10 backdrop-blur-sm">{date}</h3>
-          <div className="space-y-3">
-            {items.map((item) => (
-              <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm border border-zinc-100 flex items-start gap-4 relative group overflow-hidden">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shrink-0 ${getColor(item.type)}`}>
-                  {getIcon(item.type)}
-                </div>
-                
-                <div className="flex-1 pr-10"> 
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-bold text-zinc-800 text-base">
-                        {getLabel(item)}
-                      </h4>
-                      <div className="flex items-center text-xs text-zinc-500 font-medium mt-0.5">
-                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        {item.endTime && (
-                            <>
-                                <span className="mx-1">→</span>
-                                {new Date(item.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </>
-                        )}
-                      </div>
-                    </div>
+    const sorted = [...filteredRecords].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  
+    const grouped: Record<string, FeedingRecord[]> = {};
+    sorted.forEach(rec => {
+      const dateKey = new Date(rec.timestamp).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: userTimeZone });
+      if (!grouped[dateKey]) grouped[dateKey] = [];
+      grouped[dateKey].push(rec);
+    });
+  
+    if (records.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 opacity-50">
+                <span className="text-6xl mb-4">👶</span>
+                <p className="text-lg font-medium text-zinc-400">No records yet.</p>
+                <p className="text-sm text-zinc-400 mt-2">Tap + or say "Hi Auntie"</p>
+            </div>
+        )
+    }
+
+    const nursingTotal = records.filter(r => r.type === RecordType.NURSING)
+    .reduce((acc, curr) => {
+        if (curr.endTime) {
+            return acc + (new Date(curr.endTime).getTime() - new Date(curr.timestamp).getTime());
+        }
+        return acc;
+    }, 0) / (1000 * 60);
+
+    const bottleTotal = records.filter(r => r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK)
+    .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+
+    const pumpingTotal = records.filter(r => r.type === RecordType.PUMPING)
+    .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+
+  
+    return (
+        <>
+        <div className="grid grid-cols-3 gap-2 mb-4">
+            <FilterButton 
+                label="Nursing" 
+                value={`${nursingTotal.toFixed(0)} min`} 
+                isActive={activeFilter === 'NURSING'} 
+                onClick={() => setActiveFilter(activeFilter === 'NURSING' ? null : 'NURSING')} 
+                color="pink"
+            />
+            <FilterButton 
+                label="Bottle" 
+                value={`${bottleTotal} ml`} 
+                isActive={activeFilter === 'BOTTLE'} 
+                onClick={() => setActiveFilter(activeFilter === 'BOTTLE' ? null : 'BOTTLE')} 
+                color="blue"
+            />
+            <FilterButton 
+                label="Pumping" 
+                value={`${pumpingTotal} ml`} 
+                isActive={activeFilter === 'PUMPING'} 
+                onClick={() => setActiveFilter(activeFilter === 'PUMPING' ? null : 'PUMPING')} 
+                color="purple"
+            />
+        </div>
+
+      <div className="space-y-6 pb-32">
+        {Object.entries(grouped).map(([date, items]) => (
+          <div key={date}>
+            <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3 px-1 sticky top-16 bg-gray-50/95 py-2 z-10 backdrop-blur-sm">{date}</h3>
+            <div className="space-y-3">
+              {items.map((item) => (
+                <div 
+                  key={item.id} 
+                  className="bg-white rounded-2xl p-4 shadow-sm border border-zinc-100 flex items-start gap-4 relative group overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+                  onClick={() => onEdit(item)}
+                >
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shrink-0 ${getColor(item.type)}`}>
+                    {getIcon(item.type)}
                   </div>
                   
-                  {/* Display Raw Voice Input */}
-                  {item.rawInput && item.rawInput !== 'Manual Entry' && (
-                      <div className="mt-1.5 text-sm text-zinc-500 italic border-l-2 border-zinc-100 pl-2">
-                          "{item.rawInput}"
+                  <div className="flex-1 pr-10"> 
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-bold text-zinc-800 text-base">
+                          {getLabel(item)}
+                        </h4>
+                        <div className="flex items-center text-xs text-zinc-500 font-medium mt-0.5">
+                          {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                          {item.endTime && (
+                              <>
+                                  <span className="mx-1">→</span>
+                                  {new Date(item.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                              </>
+                          )}
+                        </div>
                       </div>
-                  )}
-
-                  <div className="mt-2 text-sm text-zinc-600 flex flex-wrap gap-2">
-                    {item.amountMl && <span className="inline-block bg-zinc-100 rounded-md px-2 py-1 font-semibold text-zinc-700">{item.amountMl}ml</span>}
-                    {item.side && <span className="inline-block bg-zinc-100 rounded-md px-2 py-1 capitalize">{item.side}</span>}
-                    {item.note && <span className="text-zinc-400 text-xs italic">Note: {item.note}</span>}
+                    </div>
+                    
+                    {/* Display Raw Voice Input */}
+                    {item.rawInput && item.rawInput !== 'Manual Entry' && (
+                        <div className="mt-1.5 text-sm text-zinc-500 italic border-l-2 border-zinc-100 pl-2">
+                            "{item.rawInput}"
+                        </div>
+                    )}
+  
+                    <div className="mt-2 text-sm text-zinc-600 flex flex-wrap gap-2">
+                      {item.amountMl && <span className="inline-block bg-zinc-100 rounded-md px-2 py-1 font-semibold text-zinc-700">{item.amountMl}ml</span>}
+                      {item.side && <span className="inline-block bg-zinc-100 rounded-md px-2 py-1 capitalize">{item.side}</span>}
+                      {item.note && <span className="text-zinc-400 text-xs italic">Note: {item.note}</span>}
+                    </div>
                   </div>
+  
+                  {/* Delete Button - Made explicit and larger */}
+                  <button 
+                      onClick={(e) => {
+                          e.stopPropagation();
+                          onDelete(item.id);
+                      }}
+                      className="absolute top-0 right-0 h-full w-14 bg-transparent text-zinc-200 hover:text-red-500 hover:bg-red-50 transition-all flex items-center justify-center z-20"
+                      aria-label="Delete"
+                  >
+                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.s673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 4.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                       </svg>
+                  </button>
+  
                 </div>
-
-                {/* Delete Button - Made explicit and larger */}
-                <button 
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(item.id);
-                    }}
-                    className="absolute top-0 right-0 h-full w-14 bg-transparent text-zinc-200 hover:text-red-500 hover:bg-red-50 transition-all flex items-center justify-center z-20"
-                    aria-label="Delete"
-                >
-                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                     </svg>
-                </button>
-
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
-    </div>
-  );
-};
+        ))}
+        {filteredRecords.length === 0 && activeFilter && (
+            <div className="text-center py-10">
+                <p className="text-zinc-400">No records for this filter.</p>
+            </div>
+        )}
+      </div>
+      </>
+    );
+  };
+  
+  const FilterButton = ({ label, value, isActive, onClick, color }: any) => {
+    const colorClasses = {
+        pink: 'border-pink-200 bg-pink-50 text-pink-700',
+        blue: 'border-blue-200 bg-blue-50 text-blue-700',
+        purple: 'border-purple-200 bg-purple-50 text-purple-700'
+    };
+    const inactiveClasses = 'border-zinc-200 bg-white text-zinc-500';
+  
+    return (
+        <button 
+            onClick={onClick}
+            className={`p-3 rounded-xl border-2 text-left transition-all ${isActive ? colorClasses[color] : inactiveClasses}`}
+        >
+            <p className="text-xs font-bold uppercase">{label}</p>
+            <p className="text-lg font-black">{value}</p>
+        </button>
+    )
+  }
 
-export default RecordList;
+  export default RecordList;

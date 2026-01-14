@@ -1,71 +1,75 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FeedingRecord, RecordType } from '../types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LabelList } from 'recharts';
 
 interface StatsViewProps {
   records: FeedingRecord[];
 }
 
+type FeedingMetric = 'total' | 'formula' | 'breast_milk' | 'count';
+type PumpingMetric = 'volume' | 'count';
+
 const StatsView: React.FC<StatsViewProps> = ({ records }) => {
+    const [feedingMetric, setFeedingMetric] = useState<FeedingMetric>('total');
+    const [pumpingMetric, setPumpingMetric] = useState<PumpingMetric>('volume');
+    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    const getDayKey = (date: Date) => {
+        return date.toLocaleDateString('en-CA', { timeZone: userTimeZone }); // YYYY-MM-DD
+    }
+
   const getLast7Days = () => {
     const days = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      days.push(d.toISOString().split('T')[0]);
+      days.push(d);
     }
     return days;
   };
 
   const last7Days = getLast7Days();
 
-  // 1. Feeding Volume (Stacked: Formula vs Breast Milk)
-  const feedingData = last7Days.map(day => {
-    const formula = records
-      .filter(r => r.timestamp.startsWith(day) && r.type === RecordType.BOTTLE_FORMULA)
-      .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+  const dailyData = last7Days.map(day => {
+    const dayKey = getDayKey(day);
+    const dayRecords = records.filter(r => getDayKey(new Date(r.timestamp)) === dayKey);
+
+    const formula = dayRecords
+        .filter(r => r.type === RecordType.BOTTLE_FORMULA)
+        .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
     
-    const breastMilk = records
-      .filter(r => r.timestamp.startsWith(day) && r.type === RecordType.BOTTLE_MILK)
-      .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+    const breastMilk = dayRecords
+        .filter(r => r.type === RecordType.BOTTLE_MILK)
+        .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
     
+    const feedingCount = dayRecords
+        .filter(r => r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK || r.type === RecordType.NURSING).length;
+
+    const pumpingVol = dayRecords
+        .filter(r => r.type === RecordType.PUMPING)
+        .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+
+    const pumpingCount = dayRecords.filter(r => r.type === RecordType.PUMPING).length;
+
     return {
-      day: day.slice(5), // MM-DD
-      Formula: formula,
-      'Breast Milk': breastMilk,
-      total: formula + breastMilk
+        day: day.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }),
+        Formula: formula,
+        'Breast Milk': breastMilk,
+        total: formula + breastMilk,
+        'Feeding Count': feedingCount,
+        'Pumping Volume': pumpingVol,
+        'Pumping Count': pumpingCount
     };
   });
 
-  // 2. Pumping Volume
-  const pumpingData = last7Days.map(day => {
-    const vol = records
-      .filter(r => r.timestamp.startsWith(day) && r.type === RecordType.PUMPING)
-      .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
-    return {
-        day: day.slice(5),
-        volume: vol
-    }
-  });
-
-  // 3. Count by Type (Generalized)
-  const typeCounts = records.reduce((acc, curr) => {
-    let key = curr.type as string;
-    if (key === RecordType.BOTTLE_FORMULA) key = 'Formula';
-    if (key === RecordType.BOTTLE_MILK) key = 'Bottle Milk';
-    
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const pieData = Object.keys(typeCounts).map(type => ({
-    name: type,
-    value: typeCounts[type]
-  }));
+  const pieData = Object.values(RecordType).map(type => {
+      const count = records.filter(r => r.type === type).length;
+      return { name: type, value: count };
+  }).filter(d => d.value > 0);
 
   const COLORS: Record<string, string> = {
-    'Formula': '#60A5FA', // Blue
-    'Bottle Milk': '#38BDF8', // Sky
+    [RecordType.BOTTLE_FORMULA]: '#60A5FA', // Blue
+    [RecordType.BOTTLE_MILK]: '#38BDF8', // Sky
     [RecordType.NURSING]: '#F472B6', // Pink
     [RecordType.PUMPING]: '#A78BFA', // Purple
     [RecordType.DIAPER]: '#FBBF24', // Yellow
@@ -77,10 +81,8 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
       return <div className="p-8 text-center text-zinc-400">No data to visualize yet.</div>;
   }
 
-  // Calculate today's totals for quick summary
-  const today = new Date().toISOString().split('T')[0];
-  const todayFormula = feedingData.find(d => new Date().toISOString().includes(d.day.replace('-','/')))?.Formula || 0; // Rough match, better to use filter
-  const todayRecs = records.filter(r => r.timestamp.startsWith(today));
+  const todayKey = getDayKey(new Date());
+  const todayRecs = records.filter(r => getDayKey(new Date(r.timestamp)) === todayKey);
   
   const todayTotalVol = todayRecs.reduce((acc, r) => {
       if (r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK) return acc + (r.amountMl || 0);
@@ -109,19 +111,33 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
 
       {/* Feeding Volume Chart */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-100">
-        <h3 className="text-lg font-bold text-zinc-800 mb-6">Feeding Volume (Last 7 Days)</h3>
-        <div className="h-64">
+        <h3 className="text-lg font-bold text-zinc-800 mb-2">Feeding (Last 7 Days)</h3>
+        <MetricTabs 
+            metrics={{'total': 'Total', 'formula': 'Formula', 'breast_milk': 'Breast Milk', 'count': 'Count'}}
+            activeMetric={feedingMetric}
+            onSelect={setFeedingMetric}
+        />
+        <div className="h-64 mt-6">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={feedingData}>
+            <BarChart data={dailyData}>
               <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} />
               <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} />
               <Tooltip 
                 cursor={{fill: '#F3F4F6'}}
                 contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} 
               />
-              <Legend />
-              <Bar dataKey="Formula" stackId="a" fill="#60A5FA" radius={[0, 0, 4, 4]} barSize={20} />
-              <Bar dataKey="Breast Milk" stackId="a" fill="#38BDF8" radius={[4, 4, 0, 0]} barSize={20} />
+              {feedingMetric === 'total' && <Bar dataKey="total" stackId="a" fill="#38BDF8" radius={[4, 4, 4, 4]} barSize={20}>
+                <LabelList dataKey="total" position="top" style={{ fill: '#38BDF8', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+              </Bar>}
+              {feedingMetric === 'formula' && <Bar dataKey="Formula" fill="#60A5FA" radius={[4, 4, 4, 4]} barSize={20}>
+                <LabelList dataKey="Formula" position="top" style={{ fill: '#60A5FA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+              </Bar>}
+              {feedingMetric === 'breast_milk' && <Bar dataKey="Breast Milk" fill="#38BDF8" radius={[4, 4, 4, 4]} barSize={20}>
+                <LabelList dataKey="Breast Milk" position="top" style={{ fill: '#38BDF8', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+              </Bar>}
+              {feedingMetric === 'count' && <Bar dataKey="Feeding Count" fill="#F472B6" radius={[4, 4, 4, 4]} barSize={20}>
+                <LabelList dataKey="Feeding Count" position="top" style={{ fill: '#F472B6', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+              </Bar>}
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -129,14 +145,24 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
 
        {/* Pumping Volume Chart */}
        <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-100">
-        <h3 className="text-lg font-bold text-zinc-800 mb-6">Pumping Output</h3>
-        <div className="h-48">
+        <h3 className="text-lg font-bold text-zinc-800 mb-2">Pumping Output</h3>
+        <MetricTabs 
+            metrics={{'volume': 'Volume', 'count': 'Count'}}
+            activeMetric={pumpingMetric}
+            onSelect={setPumpingMetric}
+        />
+        <div className="h-48 mt-6">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={pumpingData}>
+            <BarChart data={dailyData}>
               <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} />
               <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} />
               <Tooltip cursor={{fill: '#F3F4F6'}} contentStyle={{borderRadius: '12px', border: 'none'}} />
-              <Bar dataKey="volume" fill="#A78BFA" radius={[6, 6, 6, 6]} barSize={20} />
+              {pumpingMetric === 'volume' && <Bar dataKey="Pumping Volume" fill="#A78BFA" radius={[6, 6, 6, 6]} barSize={20}>
+                <LabelList dataKey="Pumping Volume" position="top" style={{ fill: '#A78BFA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+              </Bar>}
+              {pumpingMetric === 'count' && <Bar dataKey="Pumping Count" fill="#A78BFA" radius={[6, 6, 6, 6]} barSize={20}>
+                <LabelList dataKey="Pumping Count" position="top" style={{ fill: '#A78BFA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+              </Bar>}
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -156,7 +182,7 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
                 dataKey="value"
               >
                 {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[entry.name] || COLORS[entry.name as string] || '#ccc'} />
+                  <Cell key={`cell-${index}`} fill={COLORS[entry.name] || '#ccc'} />
                 ))}
               </Pie>
               <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
@@ -166,7 +192,7 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
         <div className="flex flex-wrap gap-2 justify-center mt-4">
              {pieData.map(d => (
                  <div key={d.name} className="flex items-center text-xs text-zinc-500">
-                     <span className="w-3 h-3 rounded-full mr-1" style={{backgroundColor: COLORS[d.name] || COLORS[d.name as string] || '#ccc'}}></span>
+                     <span className="w-3 h-3 rounded-full mr-1" style={{backgroundColor: COLORS[d.name] || '#ccc'}}></span>
                      {d.name} ({d.value})
                  </div>
              ))}
@@ -176,5 +202,20 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
     </div>
   );
 };
+
+const MetricTabs = ({ metrics, activeMetric, onSelect }: any) => (
+    <div className="flex bg-zinc-100 p-1 rounded-lg">
+        {Object.entries(metrics).map(([key, label]) => (
+            <button
+                key={key}
+                onClick={() => onSelect(key)}
+                className={`flex-1 py-1.5 rounded-md text-xs font-semibold capitalize transition-all ${activeMetric === key ? 'bg-white shadow text-zinc-900' : 'text-zinc-400'}`}
+            >
+                {label as string}
+            </button>
+        ))}
+    </div>
+);
+
 
 export default StatsView;

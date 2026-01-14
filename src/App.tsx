@@ -9,6 +9,7 @@ const App = () => {
   const [view, setView] = useState<ViewState>('HOME');
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
   const [isManualOpen, setIsManualOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<FeedingRecord | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Lazy initialization with robust check
@@ -41,17 +42,23 @@ const App = () => {
   }, []);
 
   const addRecord = (record: FeedingRecord) => {
-    // Add new record to top of list
-    setRecords(prev => {
-        const updated = [record, ...prev];
-        return updated;
-    });
+    setRecords(prev => [record, ...prev]);
+  };
+
+  const updateRecord = (updatedRecord: FeedingRecord) => {
+    setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+    setEditingRecord(null); 
   };
 
   const deleteRecord = (id: string) => {
     if (window.confirm("Delete this record?")) {
         setRecords(prev => prev.filter(r => r.id !== id));
     }
+  };
+
+  const handleEdit = (record: FeedingRecord) => {
+    setEditingRecord(record);
+    setIsManualOpen(true);
   };
 
   const handleExport = () => {
@@ -126,7 +133,10 @@ const App = () => {
         
         {/* Top Right: Manual Entry Plus Button */}
         <button 
-            onClick={() => setIsManualOpen(true)}
+            onClick={() => {
+                setEditingRecord(null);
+                setIsManualOpen(true);
+            }}
             className="bg-zinc-900 text-white w-10 h-10 rounded-full shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
             aria-label="Add Record"
         >
@@ -144,7 +154,7 @@ const App = () => {
               <h2 className="text-3xl font-bold text-zinc-800 tracking-tight">Today</h2>
               <span className="text-zinc-400 text-sm font-medium">{new Date().toLocaleDateString('en-US', {weekday: 'long', month: 'short', day: 'numeric'})}</span>
             </div>
-            <RecordList records={records} onDelete={deleteRecord} />
+            <RecordList records={records} onDelete={deleteRecord} onEdit={handleEdit} />
           </>
         )}
 
@@ -280,10 +290,14 @@ const App = () => {
         onClose={() => setIsVoiceOpen(false)} 
         onRecordAdded={addRecord} 
       />
-      <ManualEntry 
-        isOpen={isManualOpen} 
-        onClose={() => setIsManualOpen(false)} 
-        onSave={addRecord} 
+      <ManualEntry
+        isOpen={isManualOpen}
+        onClose={() => {
+            setIsManualOpen(false);
+            setEditingRecord(null);
+        }}
+        onSave={editingRecord ? updateRecord : addRecord}
+        recordToEdit={editingRecord}
       />
     </div>
   );
