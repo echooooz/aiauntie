@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FeedingRecord, ViewState } from './types';
+import { generateDemoData } from './demoData';
 import VoiceAssistant from './components/VoiceAssistant';
 import RecordList from './components/RecordList';
 import StatsView from './components/StatsView';
@@ -16,7 +17,11 @@ const App = () => {
   const [records, setRecords] = useState<FeedingRecord[]>(() => {
     try {
       const saved = localStorage.getItem('feeding_records');
-      return saved ? JSON.parse(saved) : [];
+      if (saved) {
+        return JSON.parse(saved);
+      }
+      // Load demo data for testing if no data exists
+      return generateDemoData();
     } catch (e) {
       console.error("Failed to load records", e);
       return [];
@@ -111,7 +116,7 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen max-w-md mx-auto bg-gray-50 relative shadow-2xl overflow-hidden pb-32">
+    <div className="min-h-screen max-w-md mx-auto bg-gray-50 relative shadow-2xl pb-32">
       
       {/* Hidden File Input for Import */}
       <input 
@@ -218,7 +223,7 @@ const App = () => {
                             </svg>
                             Export
                         </button>
-                        <button 
+                        <button
                             onClick={triggerImport}
                             className="w-full py-4 px-4 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl font-bold active:scale-95 transition-transform flex flex-col items-center justify-center gap-2"
                         >
@@ -228,6 +233,16 @@ const App = () => {
                             Import
                         </button>
                      </div>
+                     <button
+                        onClick={() => {
+                            if(window.confirm("Load demo data? This will add records.")) {
+                                setRecords(prev => [...generateDemoData(), ...prev]);
+                            }
+                        }}
+                        className="w-full mt-4 py-3 text-sm text-zinc-500 font-medium hover:text-zinc-800 transition-colors"
+                     >
+                        Load Demo Data
+                     </button>
                      <p className="text-xs text-center text-zinc-400 mt-3">Supports .json format</p>
                  </div>
             </div>
