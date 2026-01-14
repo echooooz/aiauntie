@@ -171,7 +171,7 @@ return { nursingTotal, bottleTotal, pumpingTotal };
 
 
   return (
-    <div className="h-screen max-w-md mx-auto bg-gray-50 shadow-2xl flex flex-col">
+    <div className="fixed inset-0 max-w-md mx-auto bg-gray-50 shadow-2xl flex flex-col">
       <input type="file" ref={fileInputRef} onChange={() => {}} accept=".json" className="hidden" />
 
       <header ref={headerRef} className="sticky top-0 z-20 bg-gray-50/90 backdrop-blur-md safe-top border-b border-gray-200/50">
