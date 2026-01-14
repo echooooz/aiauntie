@@ -277,7 +277,7 @@ const App = () => {
                 className={`flex flex-col items-center justify-center transition-colors ${view === 'SETTINGS' ? 'text-rose-500' : 'text-zinc-400'}`}
             >
             <svg xmlns="http://www.w3.org/2000/svg" fill={view === 'SETTINGS' ? 'currentColor' : 'none'} viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 mb-1">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 01-1.44-4.282m3.102.069a18.03 18.03 0 01-.59-4.59c0-1.586.205-3.124.59-4.59m0 0a8.982 8.982 0 016.297 3.5m0 0A18.028 18.028 0 0121 12c0 1.592-.198 3.13-.593 4.607M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
             </svg>
             <span className="text-[10px] font-bold">Settings</span>
             </button>
