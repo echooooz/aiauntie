@@ -64,6 +64,62 @@ const App = () => {
     }
   }, []);
 
+  const handleExport = () => {
+    const jsonData = JSON.stringify(records, null, 2);
+    const blob = new Blob([jsonData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const today = new Date().toISOString().slice(0, 10);
+    link.download = `aiauntie_export_${today}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result;
+        if (typeof text !== 'string') throw new Error("File is not readable text.");
+        const importedRecords: FeedingRecord[] = JSON.parse(text);
+        
+        // Basic validation
+        if (!Array.isArray(importedRecords)) {
+            throw new Error("Invalid format: Not an array.");
+        }
+        if (importedRecords.length > 0 && !('id' in importedRecords[0] && 'timestamp' in importedRecords[0])) {
+             throw new Error("Invalid format: Records missing required fields.");
+        }
+        
+        if (window.confirm("Importing will overwrite all existing data. Continue?")) {
+            setRecords(importedRecords);
+            alert("Data imported successfully!");
+        }
+      } catch (error) {
+        console.error("Failed to import data:", error);
+        alert(`Error importing data: ${error instanceof Error ? error.message : "Unknown error"}`);
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input to allow importing the same file again
+    event.target.value = '';
+  };
+
+    const handleClearData = () => {
+        if (window.confirm("Are you sure you want to delete ALL data? This cannot be undone.")) {
+            if (window.confirm("Second confirmation: This will permanently erase everything. Proceed?")) {
+                setRecords([]);
+                alert("All data has been cleared.");
+            }
+        }
+    };
+
   const addRecord = (record: FeedingRecord) => {
     setRecords(prev => [record, ...prev].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
   };
@@ -172,7 +228,7 @@ return { nursingTotal, bottleTotal, pumpingTotal };
 
   return (
     <div className="fixed inset-0 max-w-md mx-auto bg-gray-50 shadow-2xl flex flex-col">
-      <input type="file" ref={fileInputRef} onChange={() => {}} accept=".json" className="hidden" />
+      <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
 
       <header ref={headerRef} className="sticky top-0 z-20 bg-gray-50/90 backdrop-blur-md safe-top border-b border-gray-200/50">
         <div className="px-6 pt-4 flex justify-between items-center">
@@ -232,7 +288,40 @@ return { nursingTotal, bottleTotal, pumpingTotal };
             />
         )}
         {view === 'STATS' && <StatsView records={records} />}
-        {view === 'SETTINGS' && <div className="py-6"><p>Settings will be here.</p></div>}
+        {view === 'SETTINGS' && (
+            <div className="py-6 space-y-4">
+                <div className="p-4 rounded-xl bg-white border border-zinc-200">
+                    <h2 className="text-lg font-bold text-zinc-800">Data Management</h2>
+                    <p className="text-sm text-zinc-500 mt-1">Export your data or import it on another device.</p>
+                    <div className="grid grid-cols-2 gap-3 mt-4">
+                        <button
+                            onClick={handleExport}
+                            className="p-3 bg-zinc-800 text-white rounded-lg font-semibold text-center hover:bg-zinc-700 transition-colors"
+                        >
+                            Export Data
+                        </button>
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-3 bg-zinc-800 text-white rounded-lg font-semibold text-center hover:bg-zinc-700 transition-colors"
+                        >
+                            Import Data
+                        </button>
+                    </div>
+                </div>
+                 <div className="p-4 rounded-xl bg-white border border-zinc-200">
+                    <h2 className="text-lg font-bold text-zinc-800">Danger Zone</h2>
+                    <p className="text-sm text-zinc-500 mt-1">This action cannot be undone. Please export your data first.</p>
+                    <div className="grid grid-cols-1 gap-3 mt-4">
+                        <button
+                            onClick={handleClearData}
+                            className="p-3 bg-red-100 text-red-700 rounded-lg font-semibold text-center hover:bg-red-200 transition-colors border-red-300 border-2"
+                        >
+                            Clear All Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
       </main>
 
       <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-30">
