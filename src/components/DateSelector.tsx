@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useLayoutEffect, useMemo } from 'react';
 import { FeedingRecord } from '../types';
 
 interface DateSelectorProps {
@@ -9,7 +9,7 @@ interface DateSelectorProps {
 
 const DateSelector: React.FC<DateSelectorProps> = ({ selectedDate, onDateChange, records }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const selectedDateRef = useRef<HTMLButtonElement>(null);
+  const todayRef = useRef<HTMLButtonElement>(null);
 
   const dates = Array.from({ length: 30 }).map((_, i) => {
     const d = new Date();
@@ -21,11 +21,17 @@ const DateSelector: React.FC<DateSelectorProps> = ({ selectedDate, onDateChange,
       return new Set(records.map(r => new Date(r.timestamp).toDateString()));
   }, [records]);
 
-  useEffect(() => {
-    if (selectedDateRef.current) {
-        selectedDateRef.current.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  useLayoutEffect(() => {
+    if (scrollContainerRef.current && todayRef.current) {
+        const container = scrollContainerRef.current;
+        const today = todayRef.current;
+        const containerWidth = container.offsetWidth;
+        const todayWidth = today.offsetWidth;
+        const todayOffset = today.offsetLeft;
+        
+        container.scrollLeft = todayOffset - (containerWidth / 2) + (todayWidth / 2);
     }
-  }, [selectedDate]);
+  }, []);
 
   const isSameDay = (d1: Date, d2: Date) => {
       return d1.getFullYear() === d2.getFullYear() &&
@@ -34,17 +40,18 @@ const DateSelector: React.FC<DateSelectorProps> = ({ selectedDate, onDateChange,
   }
 
   return (
-    <div ref={scrollContainerRef} className="flex overflow-x-auto space-x-2 py-2 mb-4 no-scrollbar">
+    <div ref={scrollContainerRef} className="flex overflow-x-auto space-x-2 py-2 mb-4 snap-x snap-mandatory no-scrollbar">
       {dates.map(date => {
         const isSelected = isSameDay(date, selectedDate);
+        const isToday = isSameDay(date, new Date());
         const hasRecord = recordDates.has(date.toDateString());
 
         return (
           <button
             key={date.toISOString()}
-            ref={isSelected ? selectedDateRef : null}
+            ref={isToday ? todayRef : null}
             onClick={() => onDateChange(date)}
-            className={`flex-shrink-0 w-16 text-center rounded-xl p-2 transition-all relative ${isSelected ? 'bg-rose-500 text-white' : 'bg-white'}`}
+            className={`snap-center flex-shrink-0 w-16 text-center rounded-xl p-2 transition-all relative ${isSelected ? 'bg-rose-500 text-white' : 'bg-white'}`}
           >
             <p className={`text-xs font-medium ${isSelected ? 'text-rose-100' : 'text-zinc-400'}`}>{date.toLocaleString('en-US', { weekday: 'short' })}</p>
             <p className={`font-bold text-lg ${isSelected ? 'text-white' : 'text-zinc-800'}`}>{date.getDate()}</p>
