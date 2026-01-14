@@ -37,7 +37,8 @@ const App = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mainContentRef = useRef<HTMLElement>(null);
   
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [scrolledDate, setScrolledDate] = useState(new Date());
   const [activeFilter, setActiveFilter] = useState<FilterType>(null);
   
   const [records, setRecords] = useState<FeedingRecord[]>(() => {
@@ -84,6 +85,9 @@ const App = () => {
 
   const handleDateChange = (date: Date) => {
       setSelectedDate(date);
+      // Also update the scrolled date to jump immediately
+      setScrolledDate(date);
+      
       const dateKey = date.toDateString();
       const mainContent = mainContentRef.current;
       const el = mainContent?.querySelector(`[data-datekey='${dateKey}']`);
@@ -91,6 +95,34 @@ const App = () => {
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+
+      // After a short delay, clear selectedDate so scrolling can take over again
+      setTimeout(() => {
+          setSelectedDate(null);
+      }, 1000); // 1 second lock
+  };
+
+  const handleScroll = () => {
+    const mainContent = mainContentRef.current;
+    if (!mainContent) return;
+
+    const dayElements = Array.from(mainContent.querySelectorAll('[data-datekey]'));
+    let topDateKey = null;
+
+    for (const el of dayElements) {
+        const rect = el.getBoundingClientRect();
+        if (rect.top >= 50) { // 50px offset from the top
+            topDateKey = el.getAttribute('data-datekey');
+            break;
+        }
+    }
+
+    if (topDateKey) {
+        const newDate = new Date(topDateKey);
+        if (newDate.toDateString() !== scrolledDate.toDateString()) {
+            setScrolledDate(newDate);
+        }
+    }
   };
 
   const filteredRecords = useMemo(() => {
@@ -108,8 +140,9 @@ const App = () => {
   }, [records, activeFilter]);
 
   const dailyTotals = useMemo(() => {
+    const dateToFilter = selectedDate || scrolledDate;
     const isSameDay = (d1: Date, d2: Date) => d1.toDateString() === d2.toDateString();
-    const dailyRecords = records.filter(r => isSameDay(new Date(r.timestamp), selectedDate));
+    const dailyRecords = records.filter(r => isSameDay(new Date(r.timestamp), dateToFilter));
     
     const nursingTotal = dailyRecords.filter(r => r.type === RecordType.NURSING)
         .reduce((acc, curr) => acc + (curr.endTime ? (new Date(curr.endTime).getTime() - new Date(curr.timestamp).getTime()) : 0), 0) / (1000 * 60);
@@ -117,9 +150,9 @@ const App = () => {
         .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
     const pumpingTotal = dailyRecords.filter(r => r.type === RecordType.PUMPING)
         .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
+return { nursingTotal, bottleTotal, pumpingTotal };
+}, [records, selectedDate, scrolledDate]);
 
-    return { nursingTotal, bottleTotal, pumpingTotal };
-  }, [records, selectedDate]);
 
 
   return (
@@ -147,10 +180,10 @@ const App = () => {
         
         {view === 'HOME' && (
             <div className="px-6 pt-4 pb-2">
-                 <DateSelector selectedDate={selectedDate} onDateChange={handleDateChange} records={records} />
+                 <DateSelector selectedDate={selectedDate || scrolledDate} onDateChange={handleDateChange} records={records} />
                  <div className="grid grid-cols-3 gap-2 mt-2">
-                     <FilterButton 
-                         label="Nursing" 
+                     <FilterButton
+                         label="Nursing"
                          value={`${dailyTotals.nursingTotal.toFixed(0)} min`} 
                          isActive={activeFilter === 'NURSING'} 
                          onClick={() => setActiveFilter(activeFilter === 'NURSING' ? null : 'NURSING')} 
@@ -175,10 +208,10 @@ const App = () => {
         )}
       </header>
 
-      <main ref={mainContentRef} className="flex-grow overflow-y-auto px-6">
+      <main ref={mainContentRef} onScroll={handleScroll} className="flex-grow overflow-y-auto px-6">
         {view === 'HOME' && (
-            <RecordList 
-                records={filteredRecords} 
+            <RecordList
+                records={filteredRecords}
                 onDelete={deleteRecord} 
                 onEdit={handleEdit} 
             />
