@@ -107,18 +107,27 @@ const App = () => {
     if (!mainContent) return;
 
     const dayElements = Array.from(mainContent.querySelectorAll('[data-datekey]'));
-    let topDateKey = null;
+    let activeDateKey = null;
 
+    // Find the last date group that is still at least partially visible from the top
     for (const el of dayElements) {
         const rect = el.getBoundingClientRect();
-        if (rect.top >= 50) { // 50px offset from the top
-            topDateKey = el.getAttribute('data-datekey');
+        // The top of the main content area, which is where we measure from.
+        const containerTop = mainContent.getBoundingClientRect().top;
+        
+        // If the bottom of the element is below the container's top, it's visible.
+        if (rect.bottom > containerTop) {
+            activeDateKey = el.getAttribute('data-datekey');
+            // We found the first one from the top that's visible, so that's our date.
             break;
         }
     }
 
-    if (topDateKey) {
-        const newDate = new Date(topDateKey);
+    // If we scrolled past everything, activeDateKey will be null.
+    // In this case, we can maybe default to the last known date or the first date in the list.
+    // For now, let's only update if we found a valid one.
+    if (activeDateKey) {
+        const newDate = new Date(activeDateKey);
         if (newDate.toDateString() !== scrolledDate.toDateString()) {
             setScrolledDate(newDate);
         }
