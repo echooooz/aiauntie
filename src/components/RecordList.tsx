@@ -243,12 +243,12 @@ const RecordList: React.FC<RecordListProps> = ({ records, onDelete, onEdit }) =>
                         </div>
 
                         {/* Delete Button - Made explicit and larger */}
-                        <button 
+                        <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 onDelete(item.id);
                             }}
-                            className="absolute top-0 right-0 h-full w-14 bg-transparent text-zinc-200 hover:text-red-500 hover:bg-red-50 transition-all flex items-center justify-center z-20"
+                            className="absolute top-0 right-0 h-full w-14 bg-transparent text-zinc-200 hover:text-red-500 hover:bg-red-50 transition-all flex items-center justify-center z-10"
                             aria-label="Delete"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
