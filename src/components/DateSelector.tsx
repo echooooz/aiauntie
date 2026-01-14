@@ -23,19 +23,14 @@ const DateSelector: React.FC<DateSelectorProps> = ({ selectedDate, onDateChange,
 
   // Initial scroll to selected date (today) without animation
   useLayoutEffect(() => {
-    if (selectedDateRef.current && scrollContainerRef.current) {
-        const container = scrollContainerRef.current;
-        const selected = selectedDateRef.current;
-        
-        const offsetLeft = selected.offsetLeft;
-        const containerWidth = container.clientWidth;
-        const selectedWidth = selected.clientWidth;
-        
-        // Calculate centered position
-        let newScrollLeft = offsetLeft - (containerWidth / 2) + (selectedWidth / 2);
-        
-        container.scrollLeft = newScrollLeft;
-    }
+    // Using a timeout to ensure the DOM is fully rendered and measurable
+    const timer = setTimeout(() => {
+      if (selectedDateRef.current) {
+          selectedDateRef.current.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });
+      }
+    }, 0);
+
+    return () => clearTimeout(timer); // Cleanup the timer
   }, []);
 
   // Smooth scroll on date change
