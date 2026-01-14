@@ -36,6 +36,7 @@ const App = () => {
   const [editingRecord, setEditingRecord] = useState<FeedingRecord | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mainContentRef = useRef<HTMLElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
   
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [scrolledDate, setScrolledDate] = useState(new Date());
@@ -92,8 +93,13 @@ const App = () => {
       const mainContent = mainContentRef.current;
       const el = mainContent?.querySelector(`[data-datekey='${dateKey}']`);
 
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (el && mainContent && headerRef.current) {
+        const headerHeight = headerRef.current.offsetHeight;
+        const elementPosition = (el as HTMLElement).offsetTop;
+        mainContent.scrollTo({
+            top: elementPosition - headerHeight,
+            behavior: 'smooth'
+        });
       }
 
       // After a short delay, clear selectedDate so scrolling can take over again
@@ -168,7 +174,7 @@ return { nursingTotal, bottleTotal, pumpingTotal };
     <div className="h-screen max-w-md mx-auto bg-gray-50 shadow-2xl flex flex-col">
       <input type="file" ref={fileInputRef} onChange={() => {}} accept=".json" className="hidden" />
 
-      <header className="sticky top-0 z-20 bg-gray-50/90 backdrop-blur-md safe-top border-b border-gray-200/50">
+      <header ref={headerRef} className="sticky top-0 z-20 bg-gray-50/90 backdrop-blur-md safe-top border-b border-gray-200/50">
         <div className="px-6 pt-4 flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-violet-600">
@@ -240,9 +246,9 @@ return { nursingTotal, bottleTotal, pumpingTotal };
          </button>
       </div>
 
-      <nav className="safe-bottom pb-2 pt-2 z-20 border-t border-zinc-200 bg-white">
+      <nav className="flex-shrink-0 safe-bottom pb-2 pt-2 z-20 border-t border-zinc-200 bg-white">
         <div className="grid grid-cols-3 h-14">
-            <button 
+            <button
                 onClick={() => setView('HOME')}
                 className={`flex flex-col items-center justify-center transition-colors ${view === 'HOME' ? 'text-rose-500' : 'text-zinc-400'}`}
             >
