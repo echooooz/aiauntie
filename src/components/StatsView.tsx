@@ -91,8 +91,24 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+      const scrollToRight = () => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+        }
+      };
+
+      // Immediate
+      scrollToRight();
+      
+      // Next frame (after paint)
+      const rafId = requestAnimationFrame(scrollToRight);
+      
+      // Small delay to handle any layout shifts from Recharts or Flexbox
+      const timeoutId = setTimeout(scrollToRight, 50);
+
+      return () => {
+          cancelAnimationFrame(rafId);
+          clearTimeout(timeoutId);
       }
     }, [data.length]);
 
