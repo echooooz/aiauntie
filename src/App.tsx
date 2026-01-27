@@ -45,7 +45,14 @@ const App = () => {
   const [records, setRecords] = useState<FeedingRecord[]>(() => {
     try {
       const saved = localStorage.getItem('feeding_records');
-      return saved ? JSON.parse(saved) : generateDemoData();
+      if (!saved) return generateDemoData();
+      
+      const parsed = JSON.parse(saved);
+      // If parsed data is empty array, load demo data for testing convenience
+      if (Array.isArray(parsed) && parsed.length === 0) {
+          return generateDemoData();
+      }
+      return parsed;
     } catch (e) {
       console.error("Failed to load records", e);
       return [];
@@ -308,6 +315,23 @@ return { nursingTotal, bottleTotal, pumpingTotal };
                         </button>
                     </div>
                 </div>
+                 <div className="p-4 rounded-xl bg-white border border-zinc-200">
+                    <h2 className="text-lg font-bold text-zinc-800">Debug Zone</h2>
+                    <div className="grid grid-cols-1 gap-3 mt-4">
+                        <button
+                            onClick={() => {
+                                if (window.confirm("Overwrite current data with 10 days of demo data?")) {
+                                    setRecords(generateDemoData());
+                                    alert("Demo data loaded!");
+                                }
+                            }}
+                            className="p-3 bg-indigo-100 text-indigo-700 rounded-lg font-semibold text-center hover:bg-indigo-200 transition-colors"
+                        >
+                            Load Demo Data (10 Days)
+                        </button>
+                    </div>
+                </div>
+
                  <div className="p-4 rounded-xl bg-white border border-zinc-200">
                     <h2 className="text-lg font-bold text-zinc-800">Danger Zone</h2>
                     <p className="text-sm text-zinc-500 mt-1">This action cannot be undone. Please export your data first.</p>

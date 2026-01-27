@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { FeedingRecord, RecordType } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
 
@@ -69,12 +69,73 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
       });
   }, [allDays, records]);
 
-  const yAxisMax = useMemo(() => {
-      if (feedingMetric === 'count') return undefined;
-      const maxVol = Math.max(...dailyData.map(d => d.total));
-      return Math.ceil(maxVol / 100) * 100;
+  const feedingMax = useMemo(() => {
+      if (feedingMetric === 'count') {
+          const max = Math.max(0, ...dailyData.map(d => d['Feeding Count']));
+          return max < 5 ? 5 : max + 1;
+      }
+      const maxVol = Math.max(0, ...dailyData.map(d => d.total));
+      return Math.ceil(maxVol / 100) * 100 || 100;
   }, [dailyData, feedingMetric]);
 
+  const pumpingMax = useMemo(() => {
+      if (pumpingMetric === 'count') {
+           const max = Math.max(0, ...dailyData.map(d => d['Pumping Count']));
+           return max < 5 ? 5 : max + 1;
+      }
+      const maxVol = Math.max(0, ...dailyData.map(d => d['Pumping Volume']));
+      return Math.ceil(maxVol / 50) * 50 || 100;
+  }, [dailyData, pumpingMetric]);
+
+  const ScrollableBarChart = ({ data, yAxisMax, children, heightClass = "h-64" }: { data: any[], yAxisMax?: number, children: React.ReactNode, heightClass?: string }) => {
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+      }
+    }, [data.length]);
+
+    // Calculate width to show exactly 7 days
+    const widthPercentage = Math.max(100, (data.length / 7) * 100);
+
+    return (
+      <div className={`flex ${heightClass} mt-6 relative`}>
+        {/* Fixed Y-Axis */}
+        <div className="w-10 h-full flex-none z-10 bg-white">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={{ top: 5, right: 0, left: 0, bottom: 5 }}>
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{fontSize: 12, fill: '#9CA3AF'}}
+                domain={[0, yAxisMax]}
+                width={40}
+              />
+              <XAxis dataKey="day" height={30} tick={false} axisLine={false} tickLine={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Scrollable Chart Area */}
+        <div ref={scrollRef} className="flex-1 overflow-x-auto pb-2 pl-2">
+          <div style={{ width: `${widthPercentage}%`, height: '100%' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} height={30} />
+                <YAxis hide domain={[0, yAxisMax]} />
+                <Tooltip
+                  cursor={{fill: '#F3F4F6'}}
+                  contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', zIndex: 50}}
+                />
+                {children}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (records.length === 0) {
       return <div className="p-8 text-center text-zinc-400">No data to visualize yet.</div>;
@@ -111,60 +172,43 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
       {/* Feeding Volume Chart */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-100">
         <h3 className="text-lg font-bold text-zinc-800 mb-2">Feeding</h3>
-        <MetricTabs 
+        <MetricTabs
             metrics={{'total': 'Total', 'formula': 'Formula', 'breast_milk': 'Breast Milk', 'count': 'Count'}}
             activeMetric={feedingMetric}
             onSelect={setFeedingMetric}
         />
-        <div className="h-64 mt-6">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={dailyData}>
-              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} />
-              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} domain={[0, yAxisMax]}/>
-              <Tooltip 
-                cursor={{fill: '#F3F4F6'}}
-                contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} 
-              />
-              {feedingMetric === 'total' && <Bar dataKey="total" stackId="a" fill="#38BDF8" radius={[4, 4, 4, 4]} barSize={20}>
-                <LabelList dataKey="total" position="top" style={{ fill: '#38BDF8', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-              </Bar>}
-              {feedingMetric === 'formula' && <Bar dataKey="Formula" fill="#60A5FA" radius={[4, 4, 4, 4]} barSize={20}>
-                <LabelList dataKey="Formula" position="top" style={{ fill: '#60A5FA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-              </Bar>}
-              {feedingMetric === 'breast_milk' && <Bar dataKey="Breast Milk" fill="#38BDF8" radius={[4, 4, 4, 4]} barSize={20}>
-                <LabelList dataKey="Breast Milk" position="top" style={{ fill: '#38BDF8', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-              </Bar>}
-              {feedingMetric === 'count' && <Bar dataKey="Feeding Count" fill="#F472B6" radius={[4, 4, 4, 4]} barSize={20}>
-                <LabelList dataKey="Feeding Count" position="top" style={{ fill: '#F472B6', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-              </Bar>}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ScrollableBarChart data={dailyData} yAxisMax={feedingMax}>
+            {feedingMetric === 'total' && <Bar dataKey="total" stackId="a" fill="#38BDF8" radius={[4, 4, 4, 4]} barSize={20}>
+              <LabelList dataKey="total" position="top" style={{ fill: '#38BDF8', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+            </Bar>}
+            {feedingMetric === 'formula' && <Bar dataKey="Formula" fill="#60A5FA" radius={[4, 4, 4, 4]} barSize={20}>
+              <LabelList dataKey="Formula" position="top" style={{ fill: '#60A5FA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+            </Bar>}
+            {feedingMetric === 'breast_milk' && <Bar dataKey="Breast Milk" fill="#38BDF8" radius={[4, 4, 4, 4]} barSize={20}>
+              <LabelList dataKey="Breast Milk" position="top" style={{ fill: '#38BDF8', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+            </Bar>}
+            {feedingMetric === 'count' && <Bar dataKey="Feeding Count" fill="#F472B6" radius={[4, 4, 4, 4]} barSize={20}>
+              <LabelList dataKey="Feeding Count" position="top" style={{ fill: '#F472B6', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+            </Bar>}
+        </ScrollableBarChart>
       </div>
 
        {/* Pumping Volume Chart */}
        <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-100">
         <h3 className="text-lg font-bold text-zinc-800 mb-2">Pumping Output</h3>
-        <MetricTabs 
+        <MetricTabs
             metrics={{'volume': 'Volume', 'count': 'Count'}}
             activeMetric={pumpingMetric}
             onSelect={setPumpingMetric}
         />
-        <div className="h-48 mt-6">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={dailyData}>
-              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} />
-              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} />
-              <Tooltip cursor={{fill: '#F3F4F6'}} contentStyle={{borderRadius: '12px', border: 'none'}} />
-              {pumpingMetric === 'volume' && <Bar dataKey="Pumping Volume" fill="#A78BFA" radius={[6, 6, 6, 6]} barSize={20}>
-                <LabelList dataKey="Pumping Volume" position="top" style={{ fill: '#A78BFA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-              </Bar>}
-              {pumpingMetric === 'count' && <Bar dataKey="Pumping Count" fill="#A78BFA" radius={[6, 6, 6, 6]} barSize={20}>
-                <LabelList dataKey="Pumping Count" position="top" style={{ fill: '#A78BFA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-              </Bar>}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ScrollableBarChart data={dailyData} yAxisMax={pumpingMax} heightClass="h-48">
+            {pumpingMetric === 'volume' && <Bar dataKey="Pumping Volume" fill="#A78BFA" radius={[6, 6, 6, 6]} barSize={20}>
+              <LabelList dataKey="Pumping Volume" position="top" style={{ fill: '#A78BFA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+            </Bar>}
+            {pumpingMetric === 'count' && <Bar dataKey="Pumping Count" fill="#A78BFA" radius={[6, 6, 6, 6]} barSize={20}>
+              <LabelList dataKey="Pumping Count" position="top" style={{ fill: '#A78BFA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
+            </Bar>}
+        </ScrollableBarChart>
       </div>
     </div>
   );

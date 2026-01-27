@@ -7,12 +7,8 @@ export const generateDemoData = (): FeedingRecord[] => {
   // Helper to add minutes
   const addMinutes = (date: Date, min: number) => new Date(date.getTime() + min * 60000);
 
-  // Today's records (Generates about 15 records to ensure scrolling)
-  let time = new Date(now);
-  time.setHours(7, 0, 0, 0); // Start at 7 AM
-
-  const createRecord = (type: RecordType, offsetMin: number, durationMin?: number, amount?: number, side?: any, diaper?: any): FeedingRecord => {
-    const start = addMinutes(time, offsetMin);
+  const createRecord = (baseTime: Date, type: RecordType, offsetMin: number, durationMin?: number, amount?: number, side?: any, diaper?: any): FeedingRecord => {
+    const start = addMinutes(baseTime, offsetMin);
     return {
       id: crypto.randomUUID(),
       type,
@@ -26,62 +22,50 @@ export const generateDemoData = (): FeedingRecord[] => {
     };
   };
 
-  // 07:00 Wake up & Diaper
-  records.push(createRecord(RecordType.DIAPER, 0, undefined, undefined, undefined, DiaperType.WET));
-  
-  // 07:15 Nursing
-  records.push(createRecord(RecordType.NURSING, 15, 20, undefined, 'left'));
+  // Generate 10 days of data
+  for (let i = 0; i < 10; i++) {
+    const date = new Date(now);
+    date.setDate(date.getDate() - i);
+    date.setHours(7, 0, 0, 0); // Start at 7 AM
 
-  // 09:00 Nap
-  records.push(createRecord(RecordType.SLEEP, 120, 45));
+    // Skip future if we are on "today" but it's early? No, just generate standard pattern.
+    
+    // 07:00 Wake up & Diaper
+    records.push(createRecord(date, RecordType.DIAPER, 0, undefined, undefined, undefined, DiaperType.WET));
+    
+    // 07:15 Nursing (randomize duration slightly)
+    records.push(createRecord(date, RecordType.NURSING, 15, 15 + Math.floor(Math.random() * 15), undefined, 'left'));
 
-  // 10:00 Bottle
-  records.push(createRecord(RecordType.BOTTLE_FORMULA, 180, undefined, 120));
+    // 09:00 Nap
+    records.push(createRecord(date, RecordType.SLEEP, 120, 45));
 
-  // 12:00 Diaper
-  records.push(createRecord(RecordType.DIAPER, 300, undefined, undefined, undefined, DiaperType.DIRTY));
+    // 10:00 Bottle (randomize amount)
+    records.push(createRecord(date, RecordType.BOTTLE_FORMULA, 180, undefined, 100 + Math.floor(Math.random() * 40)));
 
-  // 12:30 Nursing
-  records.push(createRecord(RecordType.NURSING, 330, 15, undefined, 'right'));
+    // 12:00 Diaper
+    records.push(createRecord(date, RecordType.DIAPER, 300, undefined, undefined, undefined, DiaperType.DIRTY));
 
-  // 14:00 Pump
-  records.push(createRecord(RecordType.PUMPING, 420, 20, 150));
+    // 12:30 Nursing
+    records.push(createRecord(date, RecordType.NURSING, 330, 15, undefined, 'right'));
 
-  // 15:00 Bottle Milk
-  records.push(createRecord(RecordType.BOTTLE_MILK, 480, undefined, 100));
+    // 14:00 Pump
+    records.push(createRecord(date, RecordType.PUMPING, 420, 20, 120 + Math.floor(Math.random() * 60)));
 
-  // 16:00 Nap
-  records.push(createRecord(RecordType.SLEEP, 540, 60));
-  
-  // 18:00 Diaper
-  records.push(createRecord(RecordType.DIAPER, 660, undefined, undefined, undefined, DiaperType.MIXED));
+    // 15:00 Bottle Milk
+    records.push(createRecord(date, RecordType.BOTTLE_MILK, 480, undefined, 90 + Math.floor(Math.random() * 30)));
 
-  // 18:30 Nursing
-  records.push(createRecord(RecordType.NURSING, 690, 25, undefined, 'both'));
+    // 16:00 Nap
+    records.push(createRecord(date, RecordType.SLEEP, 540, 60));
+    
+    // 18:00 Diaper
+    records.push(createRecord(date, RecordType.DIAPER, 660, undefined, undefined, undefined, DiaperType.MIXED));
 
-  // 20:00 Sleep
-  records.push(createRecord(RecordType.SLEEP, 780, 0)); // Ongoing sleep? Or just start time.
+    // 18:30 Nursing
+    records.push(createRecord(date, RecordType.NURSING, 690, 25, undefined, 'both'));
 
-  // Yesterday (a few records)
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  yesterday.setHours(8, 0, 0, 0);
-  
-  records.push({
-      id: crypto.randomUUID(),
-      type: RecordType.BOTTLE_FORMULA,
-      timestamp: yesterday.toISOString(),
-      amountMl: 140,
-      rawInput: 'Yesterday demo'
-  });
-  
-   records.push({
-      id: crypto.randomUUID(),
-      type: RecordType.DIAPER,
-      timestamp: addMinutes(yesterday, 60).toISOString(),
-      diaperType: DiaperType.WET,
-      rawInput: 'Yesterday demo'
-  });
+    // 20:00 Sleep
+    records.push(createRecord(date, RecordType.SLEEP, 780, 0));
+  }
 
   return records.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 };
