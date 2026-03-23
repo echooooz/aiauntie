@@ -5,6 +5,8 @@ interface RecordListProps {
   records: FeedingRecord[];
   onDelete: (id: string) => void;
   onEdit: (record: FeedingRecord) => void;
+  hasMoreDays?: boolean;
+  onLoadMore?: () => void;
 }
 
 const getIcon = (type: RecordType) => {
@@ -43,7 +45,7 @@ const getLabel = (record: FeedingRecord) => {
     }
 };
 
-const RecordList: React.FC<RecordListProps> = ({ records, onDelete, onEdit }) => {
+const RecordList: React.FC<RecordListProps> = ({ records, onDelete, onEdit, hasMoreDays = false, onLoadMore }) => {
     const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     const grouped = useMemo(() => {
@@ -53,7 +55,13 @@ const RecordList: React.FC<RecordListProps> = ({ records, onDelete, onEdit }) =>
             if(!g[dateKey]) g[dateKey] = [];
             g[dateKey].push(rec);
         });
-        return g;
+
+        return Object.entries(g)
+            .map(([dateKey, items]) => [
+                dateKey,
+                [...items].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            ] as const)
+            .sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime());
     }, [records]);
 
     if (records.length === 0) {
@@ -67,13 +75,13 @@ const RecordList: React.FC<RecordListProps> = ({ records, onDelete, onEdit }) =>
 
     return (
       <div className="space-y-6 pb-32 pt-4">
-        {Object.entries(grouped).sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime()).map(([dateKey, items]) => (
+        {grouped.map(([dateKey, items]) => (
             <div key={dateKey} data-datekey={dateKey} className="scroll-mt-2">
                 <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3 px-1 sticky top-0 bg-gray-50/95 py-2 z-10 backdrop-blur-sm">
                     {new Date(dateKey).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                 </h3>
                 <div className="space-y-3">
-                {items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((item) => (
+                {items.map((item) => (
                     <div
                         key={item.id}
                         className="bg-white rounded-2xl p-4 shadow-sm border border-zinc-100 flex items-start gap-4 relative group overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
@@ -127,6 +135,16 @@ const RecordList: React.FC<RecordListProps> = ({ records, onDelete, onEdit }) =>
                 </div>
             </div>
         ))}
+        {hasMoreDays && onLoadMore && (
+            <div className="pt-2">
+                <button
+                    onClick={onLoadMore}
+                    className="w-full rounded-2xl border border-zinc-200 bg-white p-4 text-sm font-semibold text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50"
+                >
+                    Load 14 more days
+                </button>
+            </div>
+        )}
       </div>
     );
   };

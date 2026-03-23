@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { FeedingRecord, ViewState, RecordType } from './types';
-import { generateDemoData } from './demoData';
+import { FeedingRecord, ViewState } from './types';
+import { generateDemoData, generateMockData, MockDataOptions } from './demoData';
 import VoiceAssistant from './components/VoiceAssistant';
 import RecordList from './components/RecordList';
 import StatsView from './components/StatsView';
 import ManualEntry from './components/ManualEntry';
 import DateSelector from './components/DateSelector';
+import { recordStorage } from './services/recordStorage';
+import { recordRepository } from './services/recordRepository';
 
 // Define FilterType here as it's used in App's state
 export type FilterType = 'NURSING' | 'BOTTLE' | 'PUMPING' | null;
+const TIMELINE_DAY_PAGE_SIZE = 14;
 
 const FilterButton = ({ label, value, isActive, onClick, color }: any) => {
     const colorClasses = {
@@ -41,27 +44,66 @@ const App = () => {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [scrolledDate, setScrolledDate] = useState(new Date());
   const [activeFilter, setActiveFilter] = useState<FilterType>(null);
-  
-  const [records, setRecords] = useState<FeedingRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem('feeding_records');
-      if (!saved) return generateDemoData();
-      
-      const parsed = JSON.parse(saved);
-      // If parsed data is empty array, load demo data for testing convenience
-      if (Array.isArray(parsed) && parsed.length === 0) {
-          return generateDemoData();
-      }
-      return parsed;
-    } catch (e) {
-      console.error("Failed to load records", e);
-      return [];
+  const [visibleDayCount, setVisibleDayCount] = useState(TIMELINE_DAY_PAGE_SIZE);
+  const [pendingScrollDateKey, setPendingScrollDateKey] = useState<string | null>(null);
+  const [records, setRecords] = useState<FeedingRecord[]>([]);
+  const [isStorageReady, setIsStorageReady] = useState(false);
+
+  const loadMockDataset = (options: MockDataOptions) => {
+    const mockRecords = generateMockData(options);
+    const label = `${options.days} days / ${options.profile}`;
+
+    if (window.confirm(`Load reusable mock dataset: ${label}? This will overwrite current data.`)) {
+      setRecords(mockRecords);
+      alert(`Mock dataset loaded: ${mockRecords.length} records.`);
     }
-  });
+  };
 
   useEffect(() => {
-    localStorage.setItem('feeding_records', JSON.stringify(records));
-  }, [records]);
+    let cancelled = false;
+
+    const loadRecords = async () => {
+      try {
+        const loadedRecords = await recordStorage.loadRecords();
+        if (cancelled) {
+          return;
+        }
+
+        if (!loadedRecords) {
+          setRecords(generateDemoData());
+        } else if (loadedRecords.length === 0) {
+          setRecords(generateDemoData());
+        } else {
+          setRecords(loadedRecords);
+        }
+      } catch (error) {
+        console.error('Failed to load records from storage', error);
+        if (!cancelled) {
+          setRecords(generateDemoData());
+        }
+      } finally {
+        if (!cancelled) {
+          setIsStorageReady(true);
+        }
+      }
+    };
+
+    loadRecords();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    recordStorage.saveRecords(records).catch((error) => {
+      console.error('Failed to persist records', error);
+    });
+  }, [records, isStorageReady]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -128,7 +170,7 @@ const App = () => {
     };
 
   const addRecord = (record: FeedingRecord) => {
-    setRecords(prev => [record, ...prev].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+    setRecords(prev => recordRepository.sortRecordsDesc([record, ...prev]));
   };
 
   const updateRecord = (updatedRecord: FeedingRecord) => {
@@ -145,30 +187,6 @@ const App = () => {
   const handleEdit = (record: FeedingRecord) => {
     setEditingRecord(record);
     setIsManualOpen(true);
-  };
-
-  const handleDateChange = (date: Date) => {
-      setSelectedDate(date);
-      // Also update the scrolled date to jump immediately
-      setScrolledDate(date);
-      
-      const dateKey = date.toDateString();
-      const mainContent = mainContentRef.current;
-      const el = mainContent?.querySelector(`[data-datekey='${dateKey}']`);
-
-      if (el && mainContent && headerRef.current) {
-        const headerHeight = headerRef.current.offsetHeight;
-        const elementPosition = (el as HTMLElement).offsetTop;
-        mainContent.scrollTo({
-            top: elementPosition - headerHeight,
-            behavior: 'smooth'
-        });
-      }
-
-      // After a short delay, clear selectedDate so scrolling can take over again
-      setTimeout(() => {
-          setSelectedDate(null);
-      }, 1000); // 1 second lock
   };
 
   const handleScroll = () => {
@@ -204,32 +222,73 @@ const App = () => {
   };
 
   const filteredRecords = useMemo(() => {
-    if (!activeFilter) return records;
-    switch (activeFilter) {
-        case 'NURSING':
-            return records.filter(r => r.type === RecordType.NURSING);
-        case 'BOTTLE':
-            return records.filter(r => r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK);
-        case 'PUMPING':
-            return records.filter(r => r.type === RecordType.PUMPING);
-        default:
-            return records;
-    }
+    return recordRepository.filterRecords(records, activeFilter);
   }, [records, activeFilter]);
 
+  const filteredDateKeys = useMemo(() => {
+    return recordRepository.getOrderedDateKeys(filteredRecords);
+  }, [filteredRecords]);
+
+  useEffect(() => {
+    setVisibleDayCount(TIMELINE_DAY_PAGE_SIZE);
+  }, [activeFilter, records.length]);
+
+  useEffect(() => {
+    if (!pendingScrollDateKey) {
+      return;
+    }
+
+    const mainContent = mainContentRef.current;
+    const el = mainContent?.querySelector(`[data-datekey='${pendingScrollDateKey}']`);
+
+    if (el && mainContent && headerRef.current) {
+      const headerHeight = headerRef.current.offsetHeight;
+      const elementPosition = (el as HTMLElement).offsetTop;
+      mainContent.scrollTo({
+        top: elementPosition - headerHeight,
+        behavior: 'smooth'
+      });
+      setPendingScrollDateKey(null);
+    }
+  }, [pendingScrollDateKey, visibleDayCount]);
+
+  const paginatedRecords = useMemo(() => {
+    return recordRepository.getRecordsForVisibleDays(filteredRecords, filteredDateKeys, visibleDayCount);
+  }, [filteredRecords, filteredDateKeys, visibleDayCount]);
+
+  const hasMoreTimelineDays = filteredDateKeys.length > visibleDayCount;
+
+  const handleDateChange = (date: Date) => {
+      const dateKey = date.toDateString();
+      const dateIndex = filteredDateKeys.findIndex((key) => key === dateKey);
+
+      if (dateIndex >= 0 && dateIndex + 1 > visibleDayCount) {
+        setVisibleDayCount(Math.ceil((dateIndex + 1) / TIMELINE_DAY_PAGE_SIZE) * TIMELINE_DAY_PAGE_SIZE);
+      }
+
+      setSelectedDate(date);
+      setScrolledDate(date);
+      setPendingScrollDateKey(dateKey);
+
+      setTimeout(() => {
+          setSelectedDate(null);
+      }, 1000);
+  };
+
   const dailyTotals = useMemo(() => {
-    const dateToFilter = selectedDate || scrolledDate;
-    const isSameDay = (d1: Date, d2: Date) => d1.toDateString() === d2.toDateString();
-    const dailyRecords = records.filter(r => isSameDay(new Date(r.timestamp), dateToFilter));
-    
-    const nursingTotal = dailyRecords.filter(r => r.type === RecordType.NURSING)
-        .reduce((acc, curr) => acc + (curr.endTime ? (new Date(curr.endTime).getTime() - new Date(curr.timestamp).getTime()) : 0), 0) / (1000 * 60);
-    const bottleTotal = dailyRecords.filter(r => r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK)
-        .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
-    const pumpingTotal = dailyRecords.filter(r => r.type === RecordType.PUMPING)
-        .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
-return { nursingTotal, bottleTotal, pumpingTotal };
+    return recordRepository.getDailyTotals(records, selectedDate || scrolledDate);
 }, [records, selectedDate, scrolledDate]);
+
+  if (!isStorageReady) {
+    return (
+      <div className="fixed inset-0 max-w-md mx-auto bg-gray-50 shadow-2xl flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 mx-auto rounded-full border-4 border-rose-300 border-t-rose-500 animate-spin"></div>
+          <p className="mt-4 text-sm font-medium text-zinc-500">Loading records...</p>
+        </div>
+      </div>
+    );
+  }
 
 
 
@@ -289,9 +348,11 @@ return { nursingTotal, bottleTotal, pumpingTotal };
       <main ref={mainContentRef} onScroll={handleScroll} className="flex-grow overflow-y-auto px-6">
         {view === 'HOME' && (
             <RecordList
-                records={filteredRecords}
+                records={paginatedRecords}
                 onDelete={deleteRecord} 
                 onEdit={handleEdit} 
+                hasMoreDays={hasMoreTimelineDays}
+                onLoadMore={() => setVisibleDayCount((prev) => prev + TIMELINE_DAY_PAGE_SIZE)}
             />
         )}
         {view === 'STATS' && <StatsView records={records} />}
@@ -330,6 +391,32 @@ return { nursingTotal, bottleTotal, pumpingTotal };
                             Load Demo Data (10 Days)
                         </button>
                     </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white border border-zinc-200">
+                    <h2 className="text-lg font-bold text-zinc-800">Mock Data Lab</h2>
+                    <p className="text-sm text-zinc-500 mt-1">Reusable datasets for performance testing and previewing UI changes.</p>
+                    <div className="grid grid-cols-1 gap-3 mt-4">
+                        <button
+                            onClick={() => loadMockDataset({ days: 30, profile: 'standard' })}
+                            className="p-3 bg-sky-100 text-sky-700 rounded-lg font-semibold text-center hover:bg-sky-200 transition-colors"
+                        >
+                            Load Mock Data (30 Days / Standard)
+                        </button>
+                        <button
+                            onClick={() => loadMockDataset({ days: 90, profile: 'standard' })}
+                            className="p-3 bg-sky-100 text-sky-700 rounded-lg font-semibold text-center hover:bg-sky-200 transition-colors"
+                        >
+                            Load Mock Data (90 Days / Standard)
+                        </button>
+                        <button
+                            onClick={() => loadMockDataset({ days: 180, profile: 'heavy' })}
+                            className="p-3 bg-fuchsia-100 text-fuchsia-700 rounded-lg font-semibold text-center hover:bg-fuchsia-200 transition-colors"
+                        >
+                            Load Mock Data (180 Days / Heavy)
+                        </button>
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-3">Current record count: {records.length}</p>
                 </div>
 
                  <div className="p-4 rounded-xl bg-white border border-zinc-200">

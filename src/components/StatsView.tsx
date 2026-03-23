@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { FeedingRecord, RecordType } from '../types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
+import { FeedingRecord } from '../types';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { recordRepository, DailyDataPoint, StatsRange } from '../services/recordRepository';
 
 interface StatsViewProps {
   records: FeedingRecord[];
@@ -8,66 +9,23 @@ interface StatsViewProps {
 
 type FeedingMetric = 'total' | 'formula' | 'breast_milk' | 'count';
 type PumpingMetric = 'volume' | 'count';
-
 const StatsView: React.FC<StatsViewProps> = ({ records }) => {
     const [feedingMetric, setFeedingMetric] = useState<FeedingMetric>('total');
     const [pumpingMetric, setPumpingMetric] = useState<PumpingMetric>('volume');
+    const [statsRange, setStatsRange] = useState<StatsRange>(30);
     const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    const getDayKey = (date: Date) => {
-        return date.toLocaleDateString('en-CA', { timeZone: userTimeZone }); // YYYY-MM-DD
+  const statsSnapshot = useMemo(() => {
+    const snapshot = recordRepository.getStatsSnapshot(records, statsRange, userTimeZone);
+
+    if (import.meta.env.DEV) {
+      console.info(`[StatsView] Aggregated ${records.length} records into ${snapshot.dailyData.length} days in ${snapshot.elapsedMs.toFixed(2)}ms`);
     }
 
-  const allDays = useMemo(() => {
-    if (records.length === 0) return [];
-    
-    const sortedRecords = [...records].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    const firstDate = new Date(sortedRecords[0].timestamp);
-    const lastDate = new Date(sortedRecords[sortedRecords.length - 1].timestamp);
+    return snapshot;
+  }, [records, statsRange, userTimeZone]);
 
-    const days = [];
-    let currentDate = firstDate;
-    
-    while(currentDate <= lastDate) {
-        days.push(new Date(currentDate));
-        currentDate.setDate(currentDate.getDate() + 1);
-    }
-    return days;
-  }, [records]);
-
-  const dailyData = useMemo(() => {
-    return allDays.map(day => {
-        const dayKey = getDayKey(day);
-        const dayRecords = records.filter(r => getDayKey(new Date(r.timestamp)) === dayKey);
-    
-        const formula = dayRecords
-            .filter(r => r.type === RecordType.BOTTLE_FORMULA)
-            .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
-        
-        const breastMilk = dayRecords
-            .filter(r => r.type === RecordType.BOTTLE_MILK)
-            .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
-        
-        const feedingCount = dayRecords
-            .filter(r => r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK || r.type === RecordType.NURSING).length;
-    
-        const pumpingVol = dayRecords
-            .filter(r => r.type === RecordType.PUMPING)
-            .reduce((acc, curr) => acc + (curr.amountMl || 0), 0);
-    
-        const pumpingCount = dayRecords.filter(r => r.type === RecordType.PUMPING).length;
-    
-        return {
-            day: day.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }),
-            Formula: formula,
-            'Breast Milk': breastMilk,
-            total: formula + breastMilk,
-            'Feeding Count': feedingCount,
-            'Pumping Volume': pumpingVol,
-            'Pumping Count': pumpingCount
-        };
-      });
-  }, [allDays, records]);
+  const { dailyData, todayTotalVol, todayPumpVol } = statsSnapshot;
 
   const feedingMax = useMemo(() => {
       if (feedingMetric === 'count') {
@@ -87,7 +45,9 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
       return Math.ceil(maxVol / 50) * 50 || 100;
   }, [dailyData, pumpingMetric]);
 
-  const ScrollableBarChart = ({ data, yAxisMax, children, heightClass = "h-64" }: { data: any[], yAxisMax?: number, children: React.ReactNode, heightClass?: string }) => {
+  const showBarLabels = dailyData.length <= 14;
+
+  const ScrollableBarChart = ({ data, yAxisMax, children, heightClass = "h-64" }: { data: DailyDataPoint[], yAxisMax?: number, children: React.ReactNode, heightClass?: string }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -157,19 +117,6 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
       return <div className="p-8 text-center text-zinc-400">No data to visualize yet.</div>;
   }
 
-  const todayKey = getDayKey(new Date());
-  const todayRecs = records.filter(r => getDayKey(new Date(r.timestamp)) === todayKey);
-  
-  const todayTotalVol = todayRecs.reduce((acc, r) => {
-      if (r.type === RecordType.BOTTLE_FORMULA || r.type === RecordType.BOTTLE_MILK) return acc + (r.amountMl || 0);
-      return acc;
-  }, 0);
-  
-  const todayPumpVol = todayRecs.reduce((acc, r) => {
-      if (r.type === RecordType.PUMPING) return acc + (r.amountMl || 0);
-      return acc;
-  }, 0);
-
   return (
     <div className="space-y-8 pb-24">
       
@@ -189,23 +136,20 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-100">
         <h3 className="text-lg font-bold text-zinc-800 mb-2">Feeding</h3>
         <MetricTabs
+            metrics={{7: '7d', 30: '30d', 90: '90d'}}
+            activeMetric={statsRange}
+            onSelect={setStatsRange}
+        />
+        <MetricTabs
             metrics={{'total': 'Total', 'formula': 'Formula', 'breast_milk': 'Breast Milk', 'count': 'Count'}}
             activeMetric={feedingMetric}
             onSelect={setFeedingMetric}
         />
         <ScrollableBarChart data={dailyData} yAxisMax={feedingMax}>
-            {feedingMetric === 'total' && <Bar dataKey="total" stackId="a" fill="#38BDF8" radius={[4, 4, 4, 4]} barSize={20}>
-              <LabelList dataKey="total" position="top" style={{ fill: '#38BDF8', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-            </Bar>}
-            {feedingMetric === 'formula' && <Bar dataKey="Formula" fill="#60A5FA" radius={[4, 4, 4, 4]} barSize={20}>
-              <LabelList dataKey="Formula" position="top" style={{ fill: '#60A5FA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-            </Bar>}
-            {feedingMetric === 'breast_milk' && <Bar dataKey="Breast Milk" fill="#38BDF8" radius={[4, 4, 4, 4]} barSize={20}>
-              <LabelList dataKey="Breast Milk" position="top" style={{ fill: '#38BDF8', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-            </Bar>}
-            {feedingMetric === 'count' && <Bar dataKey="Feeding Count" fill="#F472B6" radius={[4, 4, 4, 4]} barSize={20}>
-              <LabelList dataKey="Feeding Count" position="top" style={{ fill: '#F472B6', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-            </Bar>}
+            {feedingMetric === 'total' && <Bar dataKey="total" stackId="a" fill="#38BDF8" radius={[4, 4, 4, 4]} barSize={20} label={showBarLabels ? { position: 'top', fill: '#38BDF8', fontSize: 12 } : false} />}
+            {feedingMetric === 'formula' && <Bar dataKey="Formula" fill="#60A5FA" radius={[4, 4, 4, 4]} barSize={20} label={showBarLabels ? { position: 'top', fill: '#60A5FA', fontSize: 12 } : false} />}
+            {feedingMetric === 'breast_milk' && <Bar dataKey="Breast Milk" fill="#38BDF8" radius={[4, 4, 4, 4]} barSize={20} label={showBarLabels ? { position: 'top', fill: '#38BDF8', fontSize: 12 } : false} />}
+            {feedingMetric === 'count' && <Bar dataKey="Feeding Count" fill="#F472B6" radius={[4, 4, 4, 4]} barSize={20} label={showBarLabels ? { position: 'top', fill: '#F472B6', fontSize: 12 } : false} />}
         </ScrollableBarChart>
       </div>
 
@@ -218,12 +162,8 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
             onSelect={setPumpingMetric}
         />
         <ScrollableBarChart data={dailyData} yAxisMax={pumpingMax} heightClass="h-48">
-            {pumpingMetric === 'volume' && <Bar dataKey="Pumping Volume" fill="#A78BFA" radius={[6, 6, 6, 6]} barSize={20}>
-              <LabelList dataKey="Pumping Volume" position="top" style={{ fill: '#A78BFA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-            </Bar>}
-            {pumpingMetric === 'count' && <Bar dataKey="Pumping Count" fill="#A78BFA" radius={[6, 6, 6, 6]} barSize={20}>
-              <LabelList dataKey="Pumping Count" position="top" style={{ fill: '#A78BFA', fontSize: '12px' }} formatter={(value: number) => value > 0 ? value : ''}/>
-            </Bar>}
+            {pumpingMetric === 'volume' && <Bar dataKey="Pumping Volume" fill="#A78BFA" radius={[6, 6, 6, 6]} barSize={20} label={showBarLabels ? { position: 'top', fill: '#A78BFA', fontSize: 12 } : false} />}
+            {pumpingMetric === 'count' && <Bar dataKey="Pumping Count" fill="#A78BFA" radius={[6, 6, 6, 6]} barSize={20} label={showBarLabels ? { position: 'top', fill: '#A78BFA', fontSize: 12 } : false} />}
         </ScrollableBarChart>
       </div>
     </div>
@@ -233,13 +173,18 @@ const StatsView: React.FC<StatsViewProps> = ({ records }) => {
 const MetricTabs = ({ metrics, activeMetric, onSelect }: any) => (
     <div className="flex bg-zinc-100 p-1 rounded-lg">
         {Object.entries(metrics).map(([key, label]) => (
+            (() => {
+                const resolvedKey = typeof activeMetric === 'number' ? Number(key) : key;
+                return (
             <button
-                key={key}
-                onClick={() => onSelect(key)}
-                className={`flex-1 py-1.5 rounded-md text-xs font-semibold capitalize transition-all ${activeMetric === key ? 'bg-white shadow text-zinc-900' : 'text-zinc-400'}`}
+                key={String(resolvedKey)}
+                onClick={() => onSelect(resolvedKey)}
+                className={`flex-1 py-1.5 rounded-md text-xs font-semibold capitalize transition-all ${activeMetric === resolvedKey ? 'bg-white shadow text-zinc-900' : 'text-zinc-400'}`}
             >
                 {label as string}
             </button>
+                );
+            })()
         ))}
     </div>
 );
