@@ -113,6 +113,34 @@ const App = () => {
     }
   }, []);
 
+  useEffect(() => {
+    const cleanupLegacyServiceWorkers = async () => {
+      const cleanupKey = 'aiauntie_sw_cleanup_v1';
+
+      if (window.localStorage.getItem(cleanupKey)) {
+        return;
+      }
+
+      try {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((registration) => registration.unregister()));
+        }
+
+        if ('caches' in window) {
+          const cacheKeys = await window.caches.keys();
+          await Promise.all(cacheKeys.map((cacheKey) => window.caches.delete(cacheKey)));
+        }
+
+        window.localStorage.setItem(cleanupKey, 'done');
+      } catch (error) {
+        console.warn('Failed to clean up legacy service workers.', error);
+      }
+    };
+
+    cleanupLegacyServiceWorkers();
+  }, []);
+
   const handleExport = () => {
     const jsonData = JSON.stringify(records, null, 2);
     const blob = new Blob([jsonData], { type: 'application/json' });
